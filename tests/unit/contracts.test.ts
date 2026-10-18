@@ -7,6 +7,7 @@ import type {
   ArcKey,
   AssistInput,
   CarState,
+  PhysicsTrack,
   PlayerInput,
   RenderSeam,
   SceneryApi,
@@ -60,6 +61,9 @@ const assignTrack = (ctx: SimCtx): void => {
 
 // TrackQuery stays curvature-free too.
 export type NoCurvatureOnTrack = Expect<Equal<Extract<keyof TrackQuery, "curvature">, never>>;
+// …and so does the physics track that extends it.
+export type NoArcOnPhysicsTrack = Expect<Equal<Extract<keyof PhysicsTrack, "curvature" | "bankAngle" | "lineAt" | "pathK">, never>>;
+export type PhysicsTrackIsTrackQuery = Expect<PhysicsTrack extends TrackQuery ? true : false>;
 
 // steerSm keeps f1-game's undefined-until-seeded semantics.
 export type SteerSmSeed = Expect<Equal<CarState["steerSm"], number | undefined>>;

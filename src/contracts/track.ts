@@ -92,3 +92,40 @@ export interface TrackQuery {
   /** `s` wrapped into [0, length): `s %= L; s < 0 ? s + L : s`. */
   wrapS(s: number): number;
 }
+
+/** The barrier limits at (s, x): max |x| right / left, and the pit-lane floor. f1-game js/physics/contact-geometry.js:183. */
+export interface WallLimits {
+  r: number;
+  l: number;
+  laneMin: number;
+  side: number;
+}
+
+/** Gantry-post scratch. f1-game js/track/core/spline.js:244 `postLimits(track, s, x, out)`. */
+export interface PostLimits {
+  r: number;
+  l: number;
+  minOut: number;
+  side: number;
+}
+
+/** A previous validated pose for `wallLimits` (incident takeover only). f1-game contact-geometry.js:146. */
+export interface WallPrevious {
+  readonly s: number;
+  readonly x: number;
+}
+
+/**
+ * The track as the physics modules see it: `TrackQuery` plus the `street` flag
+ * and the driving boundary. Still no curvature and no racing line (the arc rule).
+ */
+export interface PhysicsTrack extends TrackQuery {
+  /** f1-game js/track/tracks.js:157 `street: !!def.street`. */
+  readonly street: boolean;
+  /**
+   * The driving boundary at (s, x): barriers, pit wall, pit-exit wall and gantry
+   * legs. f1-game js/physics/contact-geometry.js:146-184 `ContactGeometry.wallLimits`.
+   * Writes `out` (and uses `postLim` as scratch) and returns `out`.
+   */
+  wallLimits(s: number, x: number, out: WallLimits, postLim: PostLimits, previous?: WallPrevious | null): WallLimits;
+}
