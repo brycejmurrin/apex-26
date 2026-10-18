@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
 import { CIRCUIT_IDS } from "../../../src/circuits";
@@ -7,8 +8,10 @@ import * as Flyby from "../../../src/data/flyby-overrides";
 import { SettingsDefaults } from "../../../src/data/settings-defaults";
 import { countsByDriver, driverColor } from "../../../src/data/tab-utils";
 import * as Teams from "../../../src/data/teams";
+import { F1_ROOT } from "./f1-vm";
+import { parity } from "./parity";
 
-const F1 = "/home/f1-game/js/data/";
+const F1 = path.join(F1_ROOT, "js/data") + "/";
 const hasF1 = existsSync(F1 + "teams.js");
 
 /** Evaluate an f1-game IIFE module in a VM and return its named global. */
@@ -110,4 +113,18 @@ describe("tab utils", () => {
     expect(driverColor({ team: "Nope" }, find, "gray")).toBe("gray");
     expect(countsByDriver([{ d: { num: 1 } }, { d: { num: 1 } }, { d: { num: 4 } }])).toEqual({ 1: 2, 4: 1 });
   });
+});
+
+// CI has no f1-game: the same comparisons against committed reference outputs.
+interface RefSettings { keys(): string[]; get(k: string): unknown }
+parity("data-modules", () => ({
+  teams: { LIST: JSON.parse(JSON.stringify(Teams.LIST)), TIER_V: [...Teams.TIER_V], DEFAULT_CUSTOM: JSON.parse(JSON.stringify(Teams.DEFAULT_CUSTOM)) },
+  settings: { keys: SettingsDefaults.keys(), values: Object.fromEntries(SettingsDefaults.keys().map((k) => [k, SettingsDefaults.get(k)])) },
+}), () => {
+  const t = JSON.parse(JSON.stringify(f1Global("teams.js", "Teams"))) as Record<string, unknown>;
+  const s = f1Global("settings-defaults.js", "SettingsDefaults") as RefSettings;
+  return {
+    teams: { LIST: t["LIST"], TIER_V: t["TIER_V"], DEFAULT_CUSTOM: t["DEFAULT_CUSTOM"] },
+    settings: { keys: [...s.keys()], values: Object.fromEntries(s.keys().map((k) => [k, s.get(k)])) },
+  };
 });

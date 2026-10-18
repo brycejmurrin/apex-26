@@ -17,6 +17,7 @@ import type { TelView } from "../../../src/data/tabs/telemetry/model";
 import { el } from "../../../src/data/dom";
 import { f1Global, hasF1 } from "./f1-vm";
 import { fixtureFetch, MemoryStorage } from "./fixtures";
+import { parity } from "./parity";
 import { stubDeps } from "./hub-stub";
 
 const ROUTES: [string, string][] = [
@@ -222,6 +223,50 @@ describe.skipIf(!hasF1)("telemetry model is bit-exact with f1-game", () => {
     same(M.create({ findTeam }).laneColors(entries), R.create({ findTeam }).laneColors(entries.map((e) => ({ d: { ...e.d } }))));
   });
 });
+
+/* ---------- the same comparisons against committed f1-game outputs (CI has no f1-game) ---------- */
+
+/** Every compared model output on the recorded lap, sampled more sparsely than the VM sweep above. */
+function telRecord(R: F1Model): Record<string, unknown> {
+  const cum = R.cumDist(cloneCar(L.car)) as M.Cum;
+  const tMax = cum.t[cum.t.length - 1] as number, dMax = cum.d[cum.d.length - 1] as number;
+  const interp: unknown[] = [];
+  for (let i = -2; i <= 800; i += 8) { const t = i * tMax / 797, d = i * dMax / 797; interp.push([R.distAtT(cum, t), R.timeAtDist(cum, d)]); }
+  const holed = cloneCar(L.car); (holed[150] as CarSample).speed = null;
+
+  const carT = (L.car[L.car.length - 1] as CarSample).t;
+  const lane = { car: cloneCar(L.car), loc: cloneLoc(L.loc) }, view = { primary: lane, tMax: carT };
+  const borrowed = { car: cloneCar(L.car.filter((_, i) => i % 2 === 0)), loc: [] };
+  const locs: unknown[] = [];
+  for (let i = -1; i <= 1000; i += 10) { const t = i * (carT + 0.5) / 1000; locs.push([R.locAt(view, lane, t), R.locAt(view, borrowed, t)]); }
+
+  const withStray = cloneLoc(L.loc).concat([{ x: -90000, y: 120000, date: (L.loc[L.loc.length - 1] as LocationSample).date + 270 }]);
+  const strays = [L.loc, withStray, L.loc.slice(0, 20)].map((loc) => {
+    const kept = R.dropStrays(cloneLoc(loc)) as LocationSample[];
+    const lim = R.gapLimitMs(cloneLoc(loc)) as number;
+    const gaps: number[] = [];
+    for (let i = 1; i < loc.length; i++) if (R.isGap(cloneLoc(loc), i, lim)) gaps.push(i);
+    return { kept: kept.length, bounds: R.locBounds(kept), lim, gaps };
+  });
+
+  const slow = L.car.map((c) => ({ ...c, speed: c.speed === null ? null : c.speed * 0.97, t: c.t * 1.03 }));
+  const duels = ([[0, 300], [300, 1100], [1000, 1400], [2000, 2600], [3500, 4300], [5000, 5800], [0, 9000], [-1, 10], [50, 50], [NaN, 5]] as const)
+    .map(([from, to]) => R.brakingDuel({ car: cloneCar(L.car) }, { car: cloneCar(slow) }, from, to));
+
+  const cv = { tMax: 107.4, speedMax: 340, rpmMax: 12500 };
+  const chan = (R.CHANNELS as M.Channel[]).map((ch) => L.car.map((c) => R.chanNorm(ch, { ...c }, cv)));
+  const samples: unknown[] = [];
+  for (let i = -3; i < 1200; i += 12) { const t = i * 0.0911; samples.push([R.sampleAt(cloneCar(L.car), t), R.chartX(cv, t, 330)]); }
+  const entries = L.drivers.concat(L.drivers.slice(0, 3)).map((d) => ({ d: { ...d } }));
+  return {
+    cumDist: cum, holed: R.cumDist(holed), interp, locs, strays, duels, chan, samples,
+    summaryTime: [0, 9.044, 59.999, 75.5, 107.761, 119.996, -1, NaN].map((t) => R.summaryTime(t)),
+    signed: [-0.0003, 0.004, -0.006, 1.2345, -12.5].map((v) => R.signed(v, 2)),
+    sessionShort: [META, { name: "Sprint", type: "Race" }, { name: "Practice 3", type: "Practice" }, { name: "Qualifying", type: "Qualifying" }, null].map((s) => R.sessionShort(s)),
+    laneColors: R.create({ findTeam: () => null }).laneColors(entries),
+  };
+}
+parity("telemetry-model", () => telRecord(M as unknown as F1Model), () => telRecord(ref()));
 
 /* ---------- synthetic laps (telemetry-trace.test.mjs) ---------- */
 

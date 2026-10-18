@@ -29,6 +29,7 @@ import {
 import { create, mount, type RealRaceTabDeps } from "../../../src/data/real-race/tab";
 import { F1_ROOT, hasF1, plain } from "./f1-vm";
 import { MemoryStorage, fixture } from "./fixtures";
+import { encode, parity } from "./parity";
 
 type Fixture = RawRace & { meeting_name: string };
 const FIXTURE = fixture("openf1-baku-2026-race.json") as Fixture;
@@ -197,6 +198,93 @@ describe.skipIf(!hasF1)("real race script: identical to f1-game's real-race-tab.
     const G = f1Realm({ SeasonCal: { REAL_2026: F.REAL_2026 } });
     const moved = { country_name: "Bahrain", circuit_short_name: "Kuala Lumpur", date_start: "2026-10-04T07:00:00+00:00", gmt_offset: "08:00:00" };
     expect(trackIdFor(moved, TRACKS, DEFAULT_CALENDAR)).toBe(G.D.trackIdFor(moved, TRACKS));
+  });
+});
+
+// ── the same comparisons against committed f1-game outputs (CI has no f1-game) ──
+
+const RR_VARIANTS: [string, (raw: Fixture) => void][] = [
+  ["running", (raw) => { raw.result = []; raw.laps = raw.laps!.filter((l) => (l!.lap_number as number) <= 20); }],
+  ["lane_duration", (raw) => { raw.pits = [{ driver_number: 63, lap_number: 31, lane_duration: 22.2, pit_duration: 99 }, { driver_number: 63, lap_number: 36, pit_duration: 23.4 }]; }],
+  ["untimed L1", (raw) => { raw.laps!.find((l) => l!.lap_number === 1)!.lap_duration = null; }],
+  ["DNS", (raw) => { const n = raw.drivers![1]!.driver_number; const r = raw.result!.find((x) => x!.driver_number === n)!; r.dns = true; r.number_of_laps = 0; raw.laps = raw.laps!.filter((l) => l!.driver_number !== n); }],
+  ["moved venue", (raw) => { Object.assign(raw.session!, { country_name: "Bahrain", circuit_short_name: "Kuala Lumpur", date_start: "2026-10-04T07:00:00+00:00", gmt_offset: "08:00:00" }); }],
+  ["no session", (raw) => { delete raw.session; raw.teamRadio = null; }],
+];
+const RR_TRACE_ROWS = [{ date: 102000, x: 30, y: 40 }, { date: NaN, x: 1, y: 2 }, { date: 100000, x: 10, y: 20 }, { date: 101000, x: null, y: 30 },
+  { date: 101000, x: 20, y: 30 }, { date: 100400, x: 999, y: 999 }, { date: 103400, x: 5, y: 5 }];
+const RR_SESSIONS = [
+  { country_name: "Italy", circuit_short_name: "Monza" }, { country_name: "Italy", circuit_short_name: "Nowhere" },
+  { country_name: "United States", circuit_short_name: "Austin" }, { country_name: "Bahrain", circuit_short_name: "Kuala Lumpur" },
+  { country_name: "Nowhere", circuit_short_name: "toString" }, { date_start: "2026-10-11T12:00:00+00:00", gmt_offset: "08:00:00" },
+  { date_start: "2026-03-01T15:00:00+00:00", gmt_offset: "-03:30:00" }, { date_start: "nope" },
+];
+const RR_MOVED = { country_name: "Bahrain", circuit_short_name: "Kuala Lumpur", date_start: "2026-10-04T07:00:00+00:00", gmt_offset: "08:00:00" };
+
+/** One implementation's view of every compared output; port and f1-game build the same shape. */
+interface RRImpl {
+  consts: number[]; build(raw: RawRace): RaceScript; cumTable(s: RaceScript): CumTable;
+  lapBoard(s: RaceScript, lap: number): unknown; raceBook(s: RaceScript): unknown;
+  pitDuel(s: RaceScript, a: number, as: number, b: number, bs: number): unknown; packTrace(rows: unknown, t0: number): ArrayLike<number>;
+  fmtLap(t: unknown): string; trackIdFor(s: unknown): unknown; todFor(s: unknown): unknown;
+  cautionsFor(rc: unknown): unknown; gridFor(p: unknown): unknown; weatherFor(w: unknown): unknown;
+  calendar: unknown; movedTrack: unknown;
+}
+function rrRecord(I: RRImpl): Record<string, unknown> {
+  const s = I.build(rawBaku());
+  // Variants are stored as deltas against the Baku script (checked whole above): a top-level
+  // key or a driver row equal to Baku's is recorded as "=", anything else in full.
+  const base = noFetchedAt(s) as unknown as Record<string, unknown>, key = (v: unknown): string => JSON.stringify(encode(v));
+  const baseDrivers = (base["drivers"] as unknown[]).map(key);
+  const variants: Record<string, unknown> = {};
+  for (const [name, edit] of RR_VARIANTS) {
+    const raw = rawBaku(); edit(raw);
+    const v = noFetchedAt(I.build(raw)) as unknown as Record<string, unknown>;
+    variants[name] = Object.fromEntries(Object.keys(v).map((k) => [k,
+      k === "drivers" ? (v[k] as unknown[]).map((d, i) => key(d) === baseDrivers[i] ? "=" : d)
+        : k in base && key(v[k]) === key(base[k]) ? "=" : v[k]]));
+  }
+  const stops = s.drivers.flatMap((d) => d.pits.map((p) => [d.num, p] as const));
+  const duels: unknown[] = [];
+  for (const [an, as] of stops.slice(0, 3)) for (const [bn, bs] of stops.slice(0, 12)) duels.push([an, as, bn, bs, plain(I.pitDuel(s, an, as, bn, bs))]);
+  return {
+    consts: I.consts,
+    baku: noFetchedAt(s),
+    // build()'s key sets, as the VM test checks them (JSON-visible keys of the script and each driver).
+    bakuKeys: { script: Object.keys(plain(s)).sort(), drivers: s.drivers.map((d) => Object.keys(plain(d)).sort()) },
+    variants,
+    cumTable: plain(I.cumTable(s)),
+    lapBoard: [1, 2, 10, 20, 31, 36, 45, s.laps].map((lap) => [lap, plain(I.lapBoard(s, lap))]),
+    raceBook: plain(I.raceBook(s)),
+    duels,
+    packTrace: Array.from(I.packTrace(RR_TRACE_ROWS, 100000)),
+    fmtLap: [null, 0, -1, 58.4019, 59.9996, 112.263, 119.9996, 3599.9999].map((t) => I.fmtLap(t)),
+    sessions: RR_SESSIONS.map((x) => [I.trackIdFor(x), I.todFor(x)]),
+    cautions: plain(I.cautionsFor(FIXTURE.raceControl)),
+    grid: plain(I.gridFor(FIXTURE.positions)),
+    weather: I.weatherFor(FIXTURE.weather),
+    calendar: plain(I.calendar),
+    movedTrack: I.movedTrack,
+  };
+}
+parity("real-race", () => rrRecord({
+  consts: [SCRIPT_V, TRACE_V, TRACE_MAX, CACHE_MAX], build: (raw) => build(raw, findTeam, TRACKS), cumTable: cumTableRef,
+  lapBoard: (s, lap) => lapBoard(s, lap, cumTableRef), raceBook: (s) => raceBook(s, cumTableRef), pitDuel,
+  packTrace: (rows, t0) => packTrace(rows as Parameters<typeof packTrace>[0], t0), fmtLap: (t) => fmtLap(t as number | null),
+  trackIdFor: (x) => trackIdFor(x as Session, TRACKS), todFor: (x) => todFor(x as Session),
+  cautionsFor: (rc) => cautionsFor(rc as Parameters<typeof cautionsFor>[0]), gridFor: (p) => gridFor(p as Parameters<typeof gridFor>[0]),
+  weatherFor: (w) => weatherFor(w as Parameters<typeof weatherFor>[0]),
+  calendar: DEFAULT_CALENDAR, movedTrack: trackIdFor(RR_MOVED, TRACKS, DEFAULT_CALENDAR),
+}), () => {
+  const F = f1Realm();
+  const G = f1Realm({ SeasonCal: { REAL_2026: F.REAL_2026 } });
+  return rrRecord({
+    consts: [F.D.SCRIPT_V, F.D.TRACE_V, F.D.TRACE_MAX, F.D.CACHE_MAX], build: (raw) => F.D.build(plain(raw), F.findTeam, plain(TRACKS)) as RaceScript,
+    cumTable: (s) => F.cumTable(s), lapBoard: (s, lap) => F.D.lapBoard(s, lap), raceBook: (s) => F.D.raceBook(s),
+    pitDuel: (s, a, as, b, bs) => F.D.pitDuel(s, a, as, b, bs), packTrace: (rows, t0) => F.D.packTrace(rows, t0) as Float32Array,
+    fmtLap: (t) => F.D.fmtLap(t), trackIdFor: (x) => F.D.trackIdFor(x, TRACKS), todFor: (x) => F.D.todFor(x),
+    cautionsFor: (rc) => F.D.cautionsFor(rc), gridFor: (p) => F.D.gridFor(p), weatherFor: (w) => F.D.weatherFor(w),
+    calendar: F.REAL_2026, movedTrack: G.D.trackIdFor(RR_MOVED, TRACKS),
   });
 });
 
