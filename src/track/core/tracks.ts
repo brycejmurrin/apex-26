@@ -12,7 +12,10 @@
  *   injected `PropsBuilder`, stubbed to empty by default (TODO(lane-scenery)).
  *   With the stub there are no barriers, so `barL`/`barR` stay unset and
  *   `wallAt` uses spline.js's pre-build fallback; `openBoundary` is a no-op.
- * - The hidden-face strip / compaction, instanced batches, pit signs and the
+ * - The props buffer is sealed, stripped of hidden faces and compacted
+ *   (tracks.js:344-367, js/track/core/hidden-faces.js) in f1-game's order;
+ *   f1-game's module-level `compactProps` switch (tracks.js:9, :765) is the
+ *   `BuildOpts.compactProps` option here. Instanced batches, pit signs and the
  *   build profile stopwatch are render/scenery concerns and are not run.
  * - `Log.info` calls are dropped (logging only).
  */
@@ -29,8 +32,9 @@ import {
 import { at as pitAt, build as buildPit, openBoundary, pitWindow as pitWindowOf, type PitWindow, type PitLaneAt, type TeamsLike } from "./pit";
 import { racingNodeToSource, wrap01 } from "./space";
 import { cr, crc, curvature, curvatureRaw, postLimits, project, sample, surfaceFolds, wallAt } from "./spline";
+import { compact as compactHidden, strip as stripHidden, type GeomBlock, type StripOpts } from "./hidden-faces";
 import { profile as surfaceProfile } from "./surface";
-import type { GeometryDiagnostic, GeomOut, RV3, Sample, TerrainGrid, Track, V3 } from "./types";
+import type { GeometryDiagnostic, GeomOut, MatAt, RV3, SealedGeom, Sample, TerrainGrid, Track, V3 } from "./types";
 
 export { sample, curvature, onKerb, banking, bankAngle, project, wallAt, postLimits };
 
@@ -197,11 +201,54 @@ export function inPitLane(track: Track, s: number, x: number): boolean {
   return x >= a && x <= b;
 }
 
-/** Scenery buffers a PropsBuilder returns (build-props.js build()). */
+/**
+ * A growable accumulator column (models.js:18-50 makeAccum; src/contracts/scenery.ts
+ * `Accum`, src/track/scenery/models.ts `GrowAccum`). `seal()` swaps it for its
+ * exact-length typed view (models.js:47).
+ */
+export interface GrowColumn {
+  readonly length: number;
+  readonly _data?: ArrayLike<number>;
+  push(...values: number[]): void;
+  seal?(): ArrayLike<number>;
+}
+/** A column as a PropsBuilder may hand it over: sealed (or plain) array, or a live accumulator. */
+export type PropsColumn = ArrayLike<number> | GrowColumn;
+/** A scenery buffer before sealGeometry: f1-game models.js:52 `scratch()` or a plain-array buffer. */
+export interface PropsGeom {
+  pos: PropsColumn;
+  nrm: PropsColumn;
+  col: PropsColumn;
+  idx: PropsColumn;
+  mat?: PropsColumn | null;
+  _mat?: number;
+  _matAt?: MatAt | null;
+  __blocks?: GeomBlock[];
+}
+
+/** Scenery buffers a PropsBuilder returns (build-props.js:2229 build()). */
 export interface PropsResult {
-  out: GeomOut;
-  glass: GeomOut;
-  water: GeomOut;
+  out: PropsGeom;
+  glass: PropsGeom;
+  water: PropsGeom;
+}
+
+const hasSeal = (c: PropsColumn | null | undefined): c is GrowColumn & { seal(): ArrayLike<number> } =>
+  !!c && typeof (c as { seal?: unknown }).seal === "function";
+/**
+ * f1-game js/track/scenery/models.js:68 sealGeometry: swap each accumulator
+ * column for its sealed view, in place. A column without `seal()` stays as it
+ * was, exactly as in f1-game; validateGeometry (a runtime check) then judges
+ * the buffer, so the SealedGeom type is what the `safe()` gate makes true.
+ */
+function sealGeometry(geo: PropsGeom): SealedGeom {
+  if (!geo) return geo;
+  if (geo.pos && hasSeal(geo.pos)) geo.pos = geo.pos.seal();
+  if (geo.nrm && hasSeal(geo.nrm)) geo.nrm = geo.nrm.seal();
+  if (geo.col && hasSeal(geo.col)) geo.col = geo.col.seal();
+  if (geo.mat && hasSeal(geo.mat)) geo.mat = geo.mat.seal();
+  if (geo.idx && hasSeal(geo.idx)) geo.idx = geo.idx.seal();
+  return geo as SealedGeom;
 }
 
 /**
@@ -227,6 +274,8 @@ export interface BuildOpts {
   props?: PropsBuilder;
   /** The garage row's teams; defaults to src/car/teams.ts. null = twelve unnamed bays (f1-game's bare VM). */
   teams?: TeamsLike | null;
+  /** Compact the props vertices after the hidden-face strip (tracks.js:9 `compactProps`, default true; :765 setCompactProps). */
+  compactProps?: boolean;
 }
 
 interface GeometryCheck {
@@ -246,7 +295,7 @@ function firstNonFinite(a: ArrayLike<number>): boolean {
   return false;
 }
 /** f1-game js/track/scenery/models.js:177 validateGeometry (the build's `safe()` gate). */
-export function validateGeometry(geo: GeomOut | null | undefined): GeometryCheck {
+export function validateGeometry(geo: SealedGeom | null | undefined): GeometryCheck {
   if (!geo || !isNumList(geo.pos) || geo.pos.length % 3)
     return { ok: false, reason: "invalid position layout" };
   if (firstNonFinite(geo.pos))
@@ -281,7 +330,7 @@ export function buildTrack(def: BuiltDef, opts?: BuildOpts | null): Track {
   track._gridSlots = opts && opts.gridSlots! > 0 ? Math.round(opts.gridSlots!) : null;
   const diags: GeometryDiagnostic[] = track.geometryDiagnostics = [];
   diags.push(Object.assign({ name: "centreline", ok: true }, surfaceFolds(track)));
-  const safe = (name: string, geo: GeomOut): GeomOut => {
+  const safe = <G extends SealedGeom>(name: string, geo: G): G | GeomOut => {
     const result = validateGeometry(geo);
     diags.push(Object.assign({ name }, result));
     if (result.ok) return geo;
@@ -300,11 +349,24 @@ export function buildTrack(def: BuiltDef, opts?: BuildOpts | null): Track {
   // After the props: the scenery kept out of the complex, so opening the boundary puts nothing in a car's path.
   openBoundary(track);
   if (builder.featherAfterOpen) builder.featherAfterOpen(track);
-  const propsGeo = safe("props", props.out);
+  const propsGeo = safe("props", sealGeometry(props.out));
   track.propsGeo = propsGeo;
+  // The tallest prop above its own ground, measured before compaction moves the positions (tracks.js:346-350).
   track.propTop = propTop(track, propsGeo);
-  const glass = safe("glass", props.glass);
-  const water = safe("water", props.water);
+  // Index-only strip of never-visible triangles (tracks.js:352-355, js/track/core/hidden-faces.js).
+  const stripOpts: StripOpts = { groundY: (x, z) => terrainY(track, x, z), terrain: track.terrainGeo };
+  propsGeo._hidden = stripHidden(propsGeo, stripOpts);
+  // ...then drop the vertices only stripped triangles used. This one DOES move vertex ranges (tracks.js:356-368).
+  if (!opts || opts.compactProps !== false) {
+    propsGeo._compact = compactHidden(propsGeo);
+    // A block's `from` is its stage buffer; nothing reads it after compaction (tracks.js:361-367).
+    const _blocks = propsGeo.__blocks;
+    if (_blocks) for (let i = 0; i < _blocks.length; i++) _blocks[i]!.from = null;
+  }
+  // f1-game seals glass/water inside build-props (build-props.js:2229); sealing an already
+  // sealed buffer is a no-op, and here it also accepts a builder that hands accumulators over.
+  const glass = safe("glass", sealGeometry(props.glass));
+  const water = safe("water", sealGeometry(props.water));
   track.glassGeo = glass;
   track.waterGeo = water;
   const gate = safe("gate", buildGate(track));
@@ -472,7 +534,7 @@ function terrainGrid(track: Track): TerrainGrid | null {
 }
 
 /** Height of the tallest prop above its own ground (the sun shadow span). tracks.js:683 */
-function propTop(track: Track, propsGeo: GeomOut | null | undefined): number {
+function propTop(track: Track, propsGeo: SealedGeom | null | undefined): number {
   const t = track.terrainGeo && track.terrainGeo.pos, p = propsGeo && propsGeo.pos;
   if (!t || !t.length || !p || !p.length) return 0;
   let lo = Infinity, best = 0;

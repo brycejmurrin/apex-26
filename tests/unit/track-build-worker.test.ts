@@ -6,6 +6,7 @@ import { unpackBuilt, type WorkerReply } from "../../src/track/build/protocol";
 import { trackQuery } from "../../src/track/build/query";
 import { buildTrack, defById } from "../../src/track/core/tracks";
 import type { TrackSample } from "../../src/contracts/track";
+import type { TrackGeometry } from "../../src/track/core/types";
 
 describe("track build worker", () => {
   it.each(["monza", "zandvoort"])("%s round-trips bit-exactly", (id) => {
@@ -18,7 +19,13 @@ describe("track build worker", () => {
     if (!r || r.type !== "built") throw new Error("no build");
     const viaWorker = unpackBuilt(r, defById(id)!);
     const direct = buildTrack(defById(id)!);
-    expect(viaWorker.geo).toEqual(direct.geo);
+    // The hidden-face strip / compaction stats (`_hidden`, `_compact`) are build diagnostics with a
+    // wall-clock `ms`; the protocol carries geometry only, so compare the buffers without them.
+    const buffers = (geo: TrackGeometry | undefined) => geo && Object.fromEntries(Object.entries(geo).map(([k, g]) => {
+      const { _hidden: _h, _compact: _c, ...rest } = g;
+      return [k, rest];
+    }));
+    expect(buffers(viaWorker.geo)).toEqual(buffers(direct.geo));
     expect(viaWorker.px).toEqual(direct.px);
     const a = trackQuery(viaWorker), b = trackQuery(direct);
     const sa: TrackSample = { p: [0, 0, 0], t: [0, 0, 0], r: [0, 0, 0], hw: 0 }, sb: TrackSample = { p: [0, 0, 0], t: [0, 0, 0], r: [0, 0, 0], hw: 0 };

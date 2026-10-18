@@ -13,7 +13,7 @@
  */
 import { profile as surfaceProfile } from "../core/surface";
 import type { BuiltDef } from "../core/def";
-import type { GeomOut, Track, TrackGeometry } from "../core/types";
+import type { GeomOut, SealedGeom, Track, TrackGeometry } from "../core/types";
 
 export interface BuildRequest {
   type: "build";
@@ -57,7 +57,7 @@ export interface ErrorMessage {
 
 export type WorkerReply = BuiltMessage | ErrorMessage;
 
-export function packGeom(g: GeomOut): PackedGeom {
+export function packGeom(g: SealedGeom): PackedGeom {
   return {
     pos: Float64Array.from(g.pos), nrm: Float64Array.from(g.nrm), col: Float64Array.from(g.col),
     idx: Uint32Array.from(g.idx), mat: g.mat ? Float64Array.from(g.mat) : null,

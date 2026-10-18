@@ -10,7 +10,7 @@ import type { BankingOut, TrackSample } from "../../src/contracts/track";
 import { trackQuery } from "../../src/track/build/query";
 import { CIRCUITS } from "../../src/circuits/index";
 import { buildTrack, defById, validateGeometry } from "../../src/track/core/tracks";
-import type { GeomOut, Track, TrackGeometry } from "../../src/track/core/types";
+import type { SealedGeom, Track, TrackGeometry } from "../../src/track/core/types";
 
 interface XRow { x: number; banking: BankingOut | null; onKerb: number; inPitLane: boolean }
 interface QueryRow { s: number; sample: TrackSample; x: XRow[]; wallL: number; wallR: number }
@@ -40,7 +40,7 @@ function firstDiff(a: ArrayLike<number> | undefined, b: readonly number[]): numb
 }
 const sha = (a: ArrayLike<number> | undefined, T: Float64ArrayConstructor | Uint32ArrayConstructor): string | null =>
   a ? createHash("sha256").update(new Uint8Array(T.from(a).buffer)).digest("hex") : null;
-const meshRow = (g: GeomOut): MeshRow => ({
+const meshRow = (g: SealedGeom): MeshRow => ({
   verts: g.pos.length / 3, idx: g.idx.length,
   pos: sha(g.pos, Float64Array)!, nrm: sha(g.nrm, Float64Array)!, col: sha(g.col, Float64Array)!,
   idxHash: sha(g.idx, Uint32Array)!, mat: sha(g.mat, Uint32Array),
