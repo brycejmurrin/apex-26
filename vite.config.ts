@@ -11,9 +11,10 @@ export default defineConfig({
     chunkSizeWarningLimit: 1000,
     // render-demo.html is the renderer lane's demo page (PLAN T1.7); built so the e2e
     // smoke can load it from `vite preview`. controller.html is the PHONE AS
-    // CONTROLLER page (src/net/controller-page.ts), a second root page.
+    // CONTROLLER page (src/net/controller-page.ts); overlay.html is the broadcast
+    // overlay (src/overlay/), an OBS browser source.
     rollupOptions: {
-      input: { main: "index.html", "render-demo": "render-demo.html", controller: "controller.html" },
+      input: { main: "index.html", "render-demo": "render-demo.html", controller: "controller.html", overlay: "overlay.html" },
     },
   },
   // PWA (src/pwa/): offline precache of the shell and hashed assets, lazy
