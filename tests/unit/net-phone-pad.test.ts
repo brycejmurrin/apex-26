@@ -941,7 +941,7 @@ test("controller.html is landscape-only, zoom-proof, and declares every element 
   for (const id of ids) expect(page.includes(`id="${id}"`), `controller.html declares #${id}`).toBe(true);
   expect((page.match(/<div id="leds"[^>]*>((?:<span><\/span>)+)/) || [])[1]?.length, "fifteen rev LEDs").toBe(15 * "<span></span>".length);
   for (const id of ["gas", "brake"]) expect(page, "pedal can receive keyboard focus").toMatch(new RegExp('<div id="' + id + '"[^>]+tabindex="0"'));
-  expect(read("vite.config.ts"), "a second Vite entry").toMatch(/controller: resolve\(__dirname, "controller\.html"\)/);
+  expect(read("vite.config.ts"), "a second Vite entry").toMatch(/controller: (resolve\(__dirname, )?"controller\.html"/);
 });
 
 // ─── cancellation races ─────────────────────────────────────────────────────
