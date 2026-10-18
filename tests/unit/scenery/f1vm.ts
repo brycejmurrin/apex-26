@@ -110,6 +110,13 @@ export function createF1Vm(): F1Vm {
     garage: sandbox["GarageScene"] ?? null,
   } as unknown as SceneryCore;
 
+  // f1-game quirk: a scenery closure may `Object.assign(pal, ATM.x)`, which
+  // mutates `def.palette`, so a circuit's FIRST build paints road/terrain from
+  // the authored palette and every later build from the mutated one (redbull).
+  // Build each circuit once, unmodified, before the first digest, so every
+  // compared build starts from the same def.
+  const warmed = new Set<string>();
+
   return {
     sandbox,
     core,
@@ -121,6 +128,14 @@ export function createF1Vm(): F1Vm {
       try {
         const def = Tracks.LIST.find((d) => d.id === id);
         if (!def) throw new Error(`no such circuit: ${id}`);
+        if (!warmed.has(id)) {
+          const swapped = new Map<string, unknown>();
+          for (const k of saved.keys()) { swapped.set(k, sandbox[k]); sandbox[k] = saved.get(k); }
+          Tracks.build(def, {});
+          for (const [k, v] of swapped) sandbox[k] = v;
+          warmed.add(id);
+        }
+        meshes.length = 0;
         const track = Tracks.build(def, {});
         const out: Digest = {};
         for (const key of Object.keys(track).sort()) {

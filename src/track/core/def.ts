@@ -58,6 +58,11 @@ export interface RawDefExtras {
   lineHints?: readonly LineHint[];
   custom?: boolean;
   _metaOnly?: boolean;
+  /**
+   * The circuit's dressing closure (a custom circuit's TrackThemes.sceneryFor,
+   * f1-game custom-tracks.js:308). fromRaw does not copy it. TODO(lane-scenery): type it.
+   */
+  scenery?: unknown;
 }
 
 export type RawDef = CircuitDef & RawDefExtras;

@@ -49,5 +49,5 @@ describe.skipIf(!haveF1)("data + themes vs f1-game", () => {
     const crowd = data.CROWD_DAY.map((c, i) => (i ? c : [c[0], c[1], c[2] + Number.EPSILON]));
     const bumped = f1!.build("monza", { TrackSceneryData: { ...data, CROWD_DAY: crowd } });
     expect(diffDigests(base, bumped)).toContain("propsGeo");
-  }, 60_000);
+  }, 300_000);
 });

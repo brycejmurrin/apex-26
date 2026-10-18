@@ -17,6 +17,7 @@
  * - `Log.info` calls are dropped (logging only).
  */
 import { CIRCUITS } from "../../circuits/index";
+import { Teams } from "../../car/teams";
 import { elevationAt, fromRaw, hasRealElevation, type BuiltDef, type RawDef } from "./def";
 import { addBox, cross, norm } from "./geom";
 import { bake as bakeLine } from "./line";
@@ -224,6 +225,7 @@ export interface BuildOpts {
   night?: boolean | null;
   gridSlots?: number | null;
   props?: PropsBuilder;
+  /** The garage row's teams; defaults to src/car/teams.ts. null = twelve unnamed bays (f1-game's bare VM). */
   teams?: TeamsLike | null;
 }
 
@@ -271,7 +273,9 @@ export function validateGeometry(geo: GeomOut | null | undefined): GeometryCheck
 export function buildTrack(def: BuiltDef, opts?: BuildOpts | null): Track {
   const track = buildCenterline(def);
   // The pit complex first: the terrain profile and the scenery read it.
-  track.pit = buildPit(track, def, curvature, opts && opts.teams);
+  // f1-game always has Teams loaded (TRACK_VM includes js/data/teams.js), and the pit
+  // boxes are painted in the row's team colours, so the game's table is the default.
+  track.pit = buildPit(track, def, curvature, opts && opts.teams !== undefined ? opts.teams : Teams);
   track.surface = surfaceProfile(def, track);
   track._night = opts && opts.night != null ? !!opts.night : !!def.night;
   track._gridSlots = opts && opts.gridSlots! > 0 ? Math.round(opts.gridSlots!) : null;
