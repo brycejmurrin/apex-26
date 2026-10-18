@@ -106,6 +106,8 @@ export function createF1Vm(): F1Vm {
     surface: g("TrackSurface"),
     scalar: { lerp: M4.lerp, clamp: M4.clamp },
     assets: sandbox["Assets"] ?? null,
+    glx: sandbox["GLX"] ?? null,
+    garage: sandbox["GarageScene"] ?? null,
   } as unknown as SceneryCore;
 
   return {
