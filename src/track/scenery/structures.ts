@@ -18,34 +18,7 @@ import type {
 import type { Vec3 } from "../../contracts/track";
 import type { BuildTrack, GeomCore, SceneryCore } from "./core";
 import { CROWD_DAY, SIGN_DIGIT, SIGN_SEG } from "./data";
-
-/** An instance placement: origin + basis, optional per-axis scale. graph.js:213 `instance(key, place, …)`. */
-export interface InstancePlace {
-  readonly o: RVec3;
-  readonly r: RVec3;
-  readonly u: RVec3;
-  readonly t: RVec3;
-  readonly s?: RVec3;
-}
-
-/** The op recorder an instance's build callback draws into. f1-game graph.js:67-87 `recorder`. */
-export interface InstanceRecorder {
-  mat(id: number, swayRange?: readonly [number, number] | null): void;
-  box(c: RVec3, sz: RVec3, col: RVec3): boolean;
-  prism(c: RVec3, sz: RVec3, col: RVec3): boolean;
-  pyramid(c: RVec3, sz: RVec3, col: RVec3): boolean;
-  cyl(c: RVec3, rad: number, h: number, col: RVec3, seg?: number): boolean;
-  cone(c: RVec3, rad: number, h: number, col: RVec3, seg?: number): boolean;
-  frustum(c: RVec3, rB: number, rT: number, h: number, col: RVec3, seg?: number): boolean;
-}
-
-/** `instance` meta. build-props.js:570 / graph.js:213 (`kind`, `whole`). */
-export interface InstanceMeta {
-  readonly kind: string;
-  readonly k?: number;
-  readonly side?: number;
-  readonly whole?: boolean;
-}
+import type { GraphMeta, GraphPlace, Recorder } from "./graph";
 
 /** `instance` opts. build-props.js:570-575. */
 export interface InstanceOpts {
@@ -102,8 +75,8 @@ export interface StructuresCtx {
   /** build-props.js:332. TODO(scenery build-props port): type the record. */
   note(kind: string, c: RVec3, size: RVec3, extra?: object): unknown;
   /** build-props.js:570: primitives that survived the guards. */
-  instance(key: string, place: InstancePlace, build: (rec: InstanceRecorder) => unknown,
-           meta?: InstanceMeta, opts?: InstanceOpts): number;
+  instance(key: string, place: GraphPlace, build: (rec: Recorder) => unknown,
+           meta?: GraphMeta, opts?: InstanceOpts): number;
   /** build-props.js:1356: the circuit's kit style for a furniture family. */
   kitOf(family: string, fallback: string): string;
   readonly indexSolid: SceneryApi["indexSolid"];
@@ -287,7 +260,7 @@ export function create(ctx: StructuresCtx, core: SceneryCore): StructuresApi {
           rec.cyl([0, 0, 0], 0.13, 1, postCol, 5);
         },
         { kind: "fence", k, side });
-      const span: InstancePlace = Object.assign({ s: [1, 1, spacing] as RVec3 }, place);
+      const span: GraphPlace = Object.assign({ s: [1, 1, spacing] as RVec3 }, place);
       ctx.instance(meshKey, span,
         (rec) => {
           if (st === "chainlink") {
