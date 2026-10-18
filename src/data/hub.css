@@ -1,0 +1,1303 @@
+/* Data Hub styles (.dh-*). Ported verbatim from f1-game css/data.css:1-1299.
+   The design tokens it reads (--gap, --text, --fs-*, --plate, --red, --ui-scale, …)
+   come from the app-wide stylesheet. TODO(lane-shell): port those tokens
+   (f1-game css/base.css and css/components.css); until then the hub renders with fallbacks. */
+@layer overlays {
+/* Apex 26 — F1 Data Hub overlay. All classes prefixed dh-. */
+
+/* #datahub is a real <dialog> since round 11. Same two load-bearing dialog
+   blocks as the telemetry popup below: the UA sizes a dialog fit-content and
+   auto-margined, so the full-viewport scrim needs the explicit stretch; and
+   the closed state must be restated in THIS layer, because overlays outranks
+   the components-layer dialog.screen:not([open]) guard — without it the
+   closed-but-unhidden seam lays out and Chromium drops boxes on top-layer
+   re-attach (the round-10 customize bug). Scrim stays on the element, so the
+   ::backdrop is silenced and there is no double-scrim under the nested
+   telemetry dialog. */
+#datahub:not([open]) { display: none; }
+#datahub::backdrop { background: none; }
+.dh-overlay {
+  position: fixed; inset: 0; z-index: 50;
+  margin: 0; border: 0;
+  width: 100%; max-width: none; max-height: none;
+  color: inherit;
+  height: 100vh; height: 100svh;
+  display: flex; align-items: center; justify-content: center;
+  background:
+    radial-gradient(120% 80% at 50% 0% in oklab, color-mix(in oklab, var(--red) 12%, transparent), transparent 58%),
+    var(--scrim);
+  /* Shared safe-area tokens, same as every other full-screen overlay — so the
+     card clears the notch and home indicator identically (and the menu-fit
+     notch simulation, which overrides --sa*, actually reaches this screen).
+     Was raw env(), which the sim could not touch and which drifted from the
+     rest of the app. */
+  padding: var(--safe-t) var(--safe-r) var(--safe-b) var(--safe-l);
+  font-variant-numeric: tabular-nums;
+}
+@media (prefers-reduced-transparency: reduce) {
+  .dh-overlay { background: rgba(4, 4, 8, 0.82); }
+}
+
+/* Short local viewport (UI SIZE included): stretch to fill. Viewport
+   max-height cannot see zoom; body[data-density] is measured in the same
+   units the card's CSS is written in. */
+body[data-density="compact"] .dh-overlay { align-items: stretch; }
+
+.dh-card {
+  /* 760px fit phones and the default APPEARANCE width token; wide desktop
+     grows in the body[data-width="wide"] rule below so seven tabs stay one row. */
+  width: min(760px, 100%);
+  /* UI SIZE applies here — the hub used to sit outside every zoomed subtree
+     (ARCHITECTURE-REVIEW A13/A14), so SETTINGS ▸ UI SIZE never touched it.
+     Same contract as `.sheet`: zoom on the card, not the full-bleed overlay,
+     so safe-area insets on `.dh-overlay` stay in viewport px. Heights below
+     use --svhz / --vwz so they stay a constant fraction of the screen. */
+  /* var(--sheet-scale, …): the card is fit-managed (js/game/sheetshape.js
+     scans .fit-managed alongside .sheet), so a short window at high UI SIZE
+     shrinks the card instead of leaving header+tabs ~45% of a 196px local
+     box. The overlays layer beats components, so the sheet's own zoom rule
+     could never reach this element — the var swap has to live here. */
+  zoom: var(--sheet-scale, var(--ui-scale));
+  --fit-at: 260px;
+  --vwz:  calc(1vw  / var(--sheet-scale, var(--ui-scale)));
+  --vhz:  calc(1vh  / var(--sheet-scale, var(--ui-scale)));
+  --svhz: calc(1svh / var(--sheet-scale, var(--ui-scale)));
+  /* The tap floor divides by the zoom this card PAINTS at, like .sheet
+     (css/components.css). MEASURED 2026-10-05 (layout-audit, 734x343): at
+     UI SIZE 130 / 150 the card capped near 1.18 and the ✕ and seven tabs,
+     sized 52 / 1.3 and 52 / 1.5 local, painted 47 and 41. */
+  --tap-paint: max(24px, calc(var(--tap-paint-at) / var(--sheet-scale, var(--ui-scale))));
+  /* Always fill most of the viewport — content scrolls inside.
+     THE MIN MAY NOT EXCEED THE MAX. `calc(100svh - 60px)` is 599px on an iPhone
+     15 Pro upright, while the max below — the viewport less the real notch and
+     home-indicator insets — is 542px, and when a min-height is larger than a
+     max-height the MIN wins. So the card grew 57px past its own safe box and the
+     panel inside it ran 16px under the home indicator, with the close button
+     2px under the Dynamic Island. Both only on a device with insets, which is
+     why nothing caught it until the audit started simulating them.
+     Sharing one custom property means the two can no longer disagree.
+     Dividers use --svhz so UI SIZE cancels (zoom × 1svh/--ui-scale). */
+  --dh-safe-h: calc(100 * var(--svhz) - var(--sat) / var(--ui-scale) - var(--sab) / var(--ui-scale) - 2 * var(--gut));
+  min-height: clamp(300px, calc(100 * var(--svhz) - 60px / var(--ui-scale)), min(900px, var(--dh-safe-h)));
+  max-height: var(--dh-safe-h);
+  display: flex; flex-direction: column;
+  /* same --panel as .sheet so the live circuit reads through the card */
+  background: var(--panel);
+  border: 1px solid var(--card-line);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  box-shadow: var(--edge), var(--lift-2);
+}
+/* DESKTOP: size to the content instead of to the screen.
+   "Always fill most of the viewport" is right on a phone, where the hub IS the
+   screen. On a desktop the overlay is flex-centered, so a content-sized card
+   (EXPORT ~460px, RESULTS near the cap) shrinks and re-centers on every tab
+   switch. Pin min = max to the same local height: long tabs still scroll
+   inside; short ones keep a stable box.
+   --wide-at / --compact-at are local (zoom-aware); the old min-width/min-height
+   media query could not see UI SIZE. */
+body[data-width="wide"][data-density="normal"] .dh-card {
+  /* Seven destinations at normal tab padding need ~900px; 760 wrapped WATCH &
+     DRIVE + EXPORT onto a second row at 1280×800 (layout-audit 2026-10-06). */
+  width: min(920px, 100%);
+  --dh-desk-h: min(880px, calc(100 * var(--svhz) - 2 * var(--gut) - var(--sat) / var(--ui-scale) - var(--sab) / var(--ui-scale)));
+  min-height: var(--dh-desk-h);
+  max-height: var(--dh-desk-h);
+  height: var(--dh-desk-h);
+}
+
+/* The header is the canonical .sheet-head now (css/components.css) — one
+   recipe, the brand-red h2, the --grad-head paint and --grad-rule hairline.
+   Only the deltas the .sheet grid would otherwise supply live here: the card
+   is a flex column, so the head must not flex, and the compact tier below is
+   keyed on body density (the card publishes its own data-density, not the
+   .sheet selector the shared compact rule matches). */
+.dh-card > .sheet-head { flex: 0 0 auto; }
+.dh-close {
+  /* Primary control — a thumb target, not a 34px glyph. Plate fill, line and
+     radius come from the button base (css/tokens.css); only the ink flip on
+     hover/press is this rule's own. */
+  width: var(--tap); height: var(--tap); flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0; font-size: var(--fs-5);
+  color: var(--text);
+}
+@media (hover: hover) and (pointer: fine) {
+  .dh-close:hover { color: var(--text); }
+}
+.dh-close:active { color: var(--text); }
+
+/* Destinations wrap. A nowrap strip + overflow:hidden card clipped EXPORT
+   to EXPOR… on the 760px desktop card (WATCH & DRIVE is the long label).
+   Year chips (`.dh-pick-years`) stay the hub's sideways strip. */
+.dh-tabs {
+  display: flex; gap: calc(var(--gap) * 0.5); padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex: 0 0 auto;
+  min-width: 0; max-width: 100%;
+  flex-wrap: wrap;
+  overflow-x: hidden;
+  overscroll-behavior-x: auto;
+  touch-action: pan-y;
+  scrollbar-width: none;
+}
+.dh-tabs::-webkit-scrollbar { display: none; }
+.dh-tab {
+  flex: 0 0 auto;
+  min-height: var(--tap);         /* primary nav — full thumb height */
+  /* Plate fill, line and radius come from the button base (css/tokens.css). */
+  padding: 7px 14px;
+  font-size: var(--fs-2); font-weight: 700; letter-spacing: var(--ls-3);
+  color: var(--text);
+  white-space: nowrap;
+  text-align: center;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+/* Press travel (css/components.css, no-preference) needs transform in the list; this layer outranks it. */
+@media (prefers-reduced-motion: no-preference) {
+  .dh-tab { transition: background 0.12s, color 0.12s, border-color 0.12s, transform 0.08s ease; }
+}
+@media (hover: hover) and (pointer: fine) {
+  .dh-tab:hover { color: var(--text); }
+}
+.dh-tab:active { color: var(--text); }
+.dh-tab.active {
+  background: var(--plate-on);
+  border-color: var(--red);
+  color: var(--text);
+  font-weight: 800;
+}
+/* UI SIZE can turn a physically short screen into a very short LOCAL card.
+   body[data-density] is measured in those same zoom-adjusted units; compact
+   chrome keeps the destination strip and loading state from consuming the
+   entire work area while every target still paints at least 24 CSS px. */
+body[data-density="compact"] .dh-card .sheet-head { padding: 0 var(--gap); }
+body[data-density="compact"] .dh-card {
+  min-height: 0; height: 100%; max-height: 100%;
+  border-radius: var(--r-md);
+}
+body[data-density="compact"] .dh-card .sheet-head h2 { font-size: var(--fs-4); }
+/* --tap-paint, not --tap-min (css/tokens.css): on a landscape iPhone (734x343,
+   layout-audit 2026-10-05) --tap-min painted the ✕ — here and on the circuit
+   card, which shares the recipe — at 26x26 and every destination tab 26 tall.
+   --tap-paint is 52 PAINTED px on touch at every UI SIZE (56.7 at full --tap,
+   104 at 200%) and stays --tap-min with a mouse. */
+body[data-density="compact"] .dh-close {
+  width: var(--tap-paint); height: var(--tap-paint); min-height: var(--tap-paint);
+}
+body[data-density="compact"] .dh-tabs { gap: var(--gap); padding: 0 var(--gap); }
+body[data-density="compact"] .dh-tab {
+  min-height: var(--tap-paint); padding: 0 var(--gap); font-size: var(--fs-micro);
+  /* A one-word tab is a square at least: LIVE measured 48x52 at UI SIZE 100 %
+     (layout-audit, 734x343, 2026-10-05). */
+  min-width: var(--tap-paint);
+}
+body[data-density="compact"] .dh-content { padding: var(--gap); }
+body[data-density="compact"] .dh-loading,
+body[data-density="compact"] .dh-error { gap: var(--gap); padding: var(--gap); }
+body[data-density="compact"] .dh-race-sub {
+  white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere;
+}
+/* Portrait / tall narrow: venue lines ("Circuit de Monaco · Monte Carl…")
+   must wrap like compact — the default nowrap+ellipsis is for wide one-line rows. */
+body[data-shape="tall"][data-width="narrow"] .dh-race-sub {
+  white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere;
+}
+/* TALL-SHAPED viewport: a tab GRID so every destination is visible without a
+   sideways gesture. As many columns as a label fits (auto-fit on the label's
+   own width, 7.1 of its font), not a fixed two: the grid was sized for six
+   tabs, and the seventh (RACE IT) made a 390px phone four rows with an orphan
+   — ~170px of a portrait screen before any content. Three columns there. Landscape keeps the horizontal strip (height
+   is scarce there, not width). Uses body[data-shape="tall"] (zoom-corrected,
+   set by SheetShape classifyBody) instead of @media (orientation: portrait)
+   which is wrong at non-100% zoom. Width still uses the zoom-aware body flag. */
+body[data-shape="tall"][data-width="narrow"] .dh-tabs {
+  display: grid;
+  /* Fixed 3 columns — auto-fit + minmax(11.2×fs-micro) collapsed to ONE column
+     on 360–390px phones (11.2×16 ≈ 179px × 2 + gap > ~310px content), so seven
+     full-width tabs ate ~270px and left the schedule a footnote-only strip
+     (layout-audit / menu-fit 2026-10-14). Labels wrap via white-space:normal. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  overflow-x: hidden;
+  overscroll-behavior-x: auto;
+  touch-action: pan-y;
+  /* Compact-size tabs in the grid, so its rows cost var(--tap-paint) each
+     instead of var(--tap): 52 painted on touch, not 56.7 — the space goes to
+     the content on a portrait phone. */
+  gap: calc(var(--gap) * 0.4);
+  padding: calc(var(--gap) * 0.5) var(--gap);
+}
+/* white-space:normal on .dh-tab below is the fallback when a 3-col cell is
+   narrower than WATCH & DRIVE / TELEMETRY. */
+/* --tap-paint, not --tap-min: the portrait tabs painted 110x38 on a 393x659
+   phone (layout-audit 2026-10-05), under the 52 touch floor. */
+body[data-shape="tall"][data-width="narrow"] .dh-tab {
+  width: 100%; min-width: 0; padding-inline: calc(var(--gap) / 3);
+  min-height: var(--tap-paint);
+  font-size: var(--fs-micro);
+  /* Wrap on spaces (WATCH & DRIVE) only — overflow-wrap:anywhere split
+     TELEMETRY into TELEMETR/Y on a 3-col 360px grid (after shot 2026-10-14). */
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: normal;
+  letter-spacing: var(--ls-4);
+  line-height: 1.15;
+}
+
+.dh-content {
+  flex: 1 1 auto;
+  overflow-y: auto; overflow-x: hidden;
+  /* a flick at the end of a long standings table shouldn't rubber-band the page
+     behind the hub; pan-y + overscroll-x:none keep a vertical flick from
+     nudging a phantom x-axis (the sf thumb used to inflate scrollWidth). */
+  overscroll-behavior-y: contain;
+  overscroll-behavior-x: none;
+  touch-action: pan-y;
+  /* ScrollFade draws .sf-scroll::before; hide the native gutter so desktop does
+     not show a grey bar beside the orange thumb (settings #pm-settings-body). */
+  scrollbar-width: none;
+  scrollbar-gutter: auto;
+  padding: calc(var(--gap) * 4 / 3) calc(var(--gap) * 1.5);
+  display: flex; flex-direction: column;  /* so flex:1 children (loading/error) expand */
+}
+/* Sticky sf thumb is in-flow (6px wide) and inflated .dh-content scrollWidth by
+   exactly that width — menu-fit hOverflow / dead scrollLeft on every size
+   (360→1440). Height already cancels via margin-bottom on .sf-scroll::before
+   (components.css); cancel width the same way, then translate into the padding
+   lane (--sf-pr from ScrollFade) so the thumb still clears row text. */
+.dh-content.sf-scroll::before {
+  margin-right: -6px;
+  transform: translateX(calc(var(--sf-pr, 0px) - var(--gap) / 6));
+}
+/* MORE-BELOW CUE. ScrollFade already toggles .sf-b when content continues, but
+   the shared mask fade is near the noise floor on the translucent hub panel
+   (390×844 standings, 2026-10-14). An inset shadow stays pinned to the
+   scrollport edge — CSS only, no new JS. Reduced-motion keeps a static edge
+   mark (no animated shimmer either way). */
+.dh-content.sf-b {
+  box-shadow: inset 0 -36px 28px -20px color-mix(in oklab, var(--carbon) 72%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .dh-content.sf-b {
+    box-shadow: inset 0 -3px 0 0 color-mix(in oklab, var(--text) 22%, transparent);
+  }
+}
+.dh-content::-webkit-scrollbar { display: none; }
+body[data-width="narrow"] .dh-content { padding: var(--gap) calc(var(--gap) * 7 / 6); }
+body[data-width="wide"] .dh-content { padding-inline-end: calc(var(--gap) * 2 + 6px); }
+body[data-width="wide"][data-density="normal"] .dh-content {
+  /* Pinned desktop card height: extra bottom pad so the last schedule row is
+     not half-clipped at scrollTop max (1280×800 walkthrough 2026-10-06). */
+  padding-bottom: calc(var(--gap) * 2);
+}
+.dh-tabbody { display: flex; flex-direction: column; gap: var(--gap); }
+
+.dh-section {
+  font-size: var(--fs-2); letter-spacing: var(--ls-5); color: var(--steel);
+  font-weight: 800; font-style: italic; text-transform: uppercase;
+  margin: calc(var(--gap) * 0.5) 0 calc(var(--gap) * 2 / 3);
+}
+
+/* loading / error / empty */
+.dh-loading, .dh-error {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: calc(var(--gap) * 7 / 6); padding: 32px var(--gap); color: var(--dim);
+  flex: 1;  /* grow to fill the content area so the card always looks full */
+}
+body[data-density="compact"] .dh-loading,
+body[data-density="compact"] .dh-error { padding: 14px var(--gap); }
+.dh-spinner {
+  width: 34px; height: 34px; border-radius: 50%;
+  border: 3px solid var(--plate-line);
+  border-top-color: var(--red);
+  animation: dh-spin 0.8s linear infinite;
+}
+@keyframes dh-spin { to { transform: rotate(360deg); } }
+.dh-loading-text { font-size: var(--fs-2); letter-spacing: 0.2em; }
+.dh-error-msg { font-size: var(--fs-4); text-align: center; max-width: 360px; }
+.dh-error-msg[data-role="title"] {
+  font-family: var(--font-hud);
+  font-size: var(--fs-5);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+.dh-error-msg[data-role="hint"] {
+  font-size: var(--fs-micro);
+  color: var(--dim);
+  max-width: 420px;
+}
+.dh-error[data-reason="offline"],
+.dh-error[data-reason="offline-cached"] {
+  outline: 1px solid color-mix(in oklab, var(--sec-slow) 50%, transparent);
+  outline-offset: -1px;
+}
+.dh-error[data-reason="upstream"],
+.dh-error[data-reason="upstream-cached"] {
+  outline: 1px solid color-mix(in oklab, var(--you) 45%, transparent);
+  outline-offset: -1px;
+}
+/* ON THE LADDER. Measured 91x42 on a 393px phone — the only control in the hub
+   that was short of the 52px touch floor (.dh-tab is already on it, and the
+   chips take --chip-h deliberately). It is the recovery button on an error
+   state, i.e. the one control on screen when the hub has nothing else to offer,
+   so it is the worst one to under-size. .dh-card now carries UI SIZE zoom, so
+   --tap grows with the setting the same way sheet controls do. */
+.dh-retry { padding: calc(var(--gap) * 2 / 3) var(--pad); min-height: var(--tap); }
+.dh-empty { padding: 30px var(--gap); text-align: center; color: var(--dim); font-size: var(--fs-4); }
+/* Meta ink: #6a6a75 / #7a7a85 were WCAG AA fails on the hub panel (~3.7:1 and
+   ~4.1–4.4:1 on --panel composites). --dim (#9a9aa8) clears 4.5:1 — same
+   migration as --steel (steel-role.test.mjs). */
+.dh-footnote { margin-top: calc(var(--gap) * 4 / 3); padding-top: calc(var(--gap) * 2 / 3); border-top: 1px solid rgba(255,255,255,0.05); font-size: var(--fs-2); color: var(--dim); text-align: right; }
+
+/* schedule */
+[data-nextgp="tile"] {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: calc(var(--gap) / 3) var(--gap);
+  padding: var(--gap); border: 1px solid var(--plate-line);
+  border-radius: var(--r-lg); background: color-mix(in oklab, var(--red) 12%, var(--plate));
+}
+[data-nextgp="kicker"] { color: var(--red); font-size: var(--fs-1); font-weight: 900; font-style: italic; letter-spacing: var(--ls-5); }
+[data-nextgp="name"] { margin: 0; color: var(--text); font-size: var(--fs-6); line-height: 1.05; }
+[data-nextgp="place"] { min-width: 0; color: var(--dim); font-size: var(--fs-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-nextgp="countdown"] {
+  grid-column: 2; grid-row: 1 / span 3; align-self: center; color: var(--text);
+  font-size: var(--fs-5); font-weight: 900; font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+[data-nextgp="sessions"] {
+  grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: calc(var(--gap) / 3); margin-top: calc(var(--gap) * 0.5);
+}
+[data-nextgp="session"] { display: flex; flex-direction: column; gap: calc(var(--gap) / 6); padding-top: calc(var(--gap) / 3); border-top: 1px solid var(--plate-line); }
+[data-nextgp="session-label"] { color: var(--steel); font-size: var(--fs-micro); font-weight: 800; letter-spacing: var(--ls-3); }
+[data-nextgp="session-time"] { color: var(--text); font-size: var(--fs-1); white-space: nowrap; }
+body[data-width="narrow"] [data-nextgp="tile"] { grid-template-columns: 1fr; }
+body[data-width="narrow"] [data-nextgp="countdown"] { grid-column: 1; grid-row: auto; }
+
+/* schedule rows */
+.dh-race {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: calc(var(--gap) * 0.75) calc(var(--gap) * 2 / 3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.dh-race-round { width: 30px; font-weight: 800; font-style: italic; color: var(--dim); flex: 0 0 auto; padding-top: calc(var(--gap) / 6); }
+.dh-race-main { flex: 1; min-width: 0; }
+.dh-race-name { font-size: var(--fs-4); color: var(--text); display: flex; align-items: center; gap: calc(var(--gap) * 0.5); flex-wrap: wrap; line-height: 1.3; }
+.dh-race-sub { font-size: var(--fs-2); color: var(--dim); margin-top: calc(var(--gap) * 0.25); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dh-race-time { font-size: var(--fs-1); color: var(--dim); margin-top: calc(var(--gap) / 6); }
+.dh-race-date { font-size: var(--fs-2); color: #c4c4c8; flex: 0 0 auto; text-align: right; min-width: 50px; white-space: nowrap; }
+/* Hide local time on very narrow phones to save vertical space */
+body[data-width="narrow"] .dh-race-time { display: none; }
+.dh-race-next { background: color-mix(in oklab, var(--red) 10%, transparent); border-radius: var(--r-md); }
+.dh-chip-next { font-size: var(--fs-micro); font-weight: 800; letter-spacing: var(--ls-4); background: var(--red); color: #fff; padding: calc(var(--gap) / 6) calc(var(--gap) * 0.5); border-radius: var(--r-sm); }
+.dh-chip-sprint { font-size: var(--fs-micro); font-weight: 800; letter-spacing: var(--ls-4); background: #4a4a9a; color: #fff; padding: calc(var(--gap) / 6) calc(var(--gap) * 0.5); border-radius: var(--r-sm); }
+
+/* standings */
+.dh-standings { gap: calc(var(--gap) * 1.5); }
+body[data-width="wide"] .dh-standings { flex-direction: row; align-items: flex-start; }
+.dh-standings-col { flex: 1; min-width: 0; }
+/* A standings row is a RANKING, and it was rendering as a list of text. Three
+   changes, all cheap:
+   * a 3px team-colour edge (--row-team, set per row from the same team colour
+     the code chip already uses) turns twenty rows into a chart you can read
+     down the side of — team-mates pair up visually without reading a word;
+   * the hairline is inset from the edge so it stops before the colour bar
+     instead of cutting across it;
+   * the row lifts on hover/press like every other interactive surface, which
+     it always looked like it should and never did. */
+.dh-row {
+  display: flex; align-items: center; gap: calc(var(--gap) * 2 / 3);
+  padding: 5px 4px 5px 0;
+  position: relative;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: var(--fs-3);
+  border-left: 3px solid var(--row-team, transparent);
+  padding-left: 7px;
+  border-radius: 0 var(--r-xs) var(--r-xs) 0;
+}
+@media (hover: hover) and (pointer: fine) {
+  .dh-row:hover { background: var(--plate); }
+}
+/* The leader gets the faintest possible wash — enough that the top of the table
+   reads as the top without needing a badge. */
+.dh-row.dh-row-lead {
+  background: linear-gradient(90deg in oklab,
+    color-mix(in oklab, var(--row-team, var(--red)) 16%, transparent), transparent 58%);
+}
+.dh-row-cons { flex-wrap: wrap; }
+/* One main-info recipe for both row kinds. The standings and live rows wrote
+   the same four declarations twice, differing only in the wrap floor — the
+   live tab's rows (inside the live card) keep their tighter one below. */
+.dh-cons-main { display: flex; align-items: center; gap: calc(var(--gap) * 2 / 3); flex: 1; min-width: 200px; }
+.dh-livecard .dh-cons-main { min-width: 150px; }
+.dh-h2h-wrap { display: flex; flex-direction: column; gap: calc(var(--gap) / 6); flex: 1; min-width: 140px; align-items: flex-end; }
+.dh-h2h-bar { display: flex; width: 100%; max-width: 160px; height: 6px; border-radius: var(--r-xs); background: rgba(255, 255, 255, 0.1); overflow: hidden; margin-top: calc(var(--gap) / 3); }
+.dh-h2h-fill { height: 100%; background: #fff; transition: width 0.3s; }
+.dh-h2h-alt { background: rgba(255, 255, 255, 0.3); }
+.dh-h2h-labels { display: flex; width: 100%; max-width: 160px; justify-content: space-between; font-size: var(--fs-micro); color: var(--dim); font-weight: 700; letter-spacing: var(--ls-3); }
+
+.dh-pos { font-family: var(--font-hud); font-variant-numeric: tabular-nums; width: 24px; text-align: right; color: var(--dim); flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+.dh-codechip {
+  flex: 0 0 auto;
+  font-size: var(--fs-2); font-weight: 800;
+  padding: calc(var(--gap) / 6) calc(var(--gap) * 0.5); border-radius: var(--r-sm);
+  color: #fff; min-width: 38px; text-align: center;
+  border-left: 3px solid var(--plate-line);
+  background: rgba(255, 255, 255, 0.07);
+}
+/* SETTINGS › ACCESSIBILITY › COLOURBLIND CUES: compound chips carry the
+   S/M/H/I/W letter (js/data/hub.js compoundChipLabel) — tighten the chip so a
+   single letter still reads as a badge, not a driver code. */
+:root[data-cb-cues="on"] .dh-codechip[data-compound] {
+  min-width: 1.6em;
+  font-family: var(--font-hud);
+  letter-spacing: 0;
+}
+.dh-swatch { width: 12px; height: 12px; border-radius: var(--r-xs); flex: 0 0 auto; }
+.dh-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Live / constructors put the team (or nothing) AFTER the name inside
+   .dh-cons-main. Growing the name parks that team on the far right when the
+   row has no gap column (P1), while P2+ keep it beside the name. */
+.dh-cons-main .dh-name { flex: 0 1 auto; }
+/* PHONE-LANDSCAPE CONSTRUCTOR NAMES. The constructors column is ~385px at
+   844x390, and the H2H bars (min 140px) shared the row with .dh-cons-main
+   (min 200px), so the name, the only shrinkable piece, collapsed to "Me…",
+   "F.", "N" (touch inspect 2026-10-17). Give the name the same floor as the
+   narrow tier and let the main info size to its content: when both no longer
+   fit, the row's existing wrap drops the H2H bars to their own line. */
+.dh-row-cons .dh-cons-main { min-width: auto; }
+.dh-row-cons .dh-cons-main .dh-name { min-width: 6.5em; }
+.dh-wins { font-size: var(--fs-2); color: #f6d200; font-weight: 700; flex: 0 0 auto; }
+.dh-pts { font-family: var(--font-hud); min-width: 44px; text-align: right; font-weight: 800; flex: 0 0 auto; color: var(--text); font-variant-numeric: tabular-nums; }
+.dh-gap { font-size: var(--fs-2); color: var(--dim); flex: 0 0 auto; min-width: 36px; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* last race */
+#dh-lr-head { margin-bottom: var(--gap); }
+/* KEPT LITERAL, NOT AN OVERSIGHT: this is one rung of a RESPONSIVE SHRINK
+   LADDER (a component whose font-size steps down again in a narrower/denser
+   layout — .dh-split-L, .dh-tpopup, .dh-telem-side). Tokenising both rungs of
+   .dh-lr-name (16px/15px), .dh-dchip, .dh-pill, .dh-tbtn or .dh-td-time
+   (11px/12px) would land THEM ON THE SAME --fs-2/--fs-5 step, erasing the
+   pixel of shrink between them — and .dh-gval/.dh-live-title's 17px base rung
+   has no step to land on at all without a similar collapse. The other 55
+   font-size sites in this file DID migrate onto css/tokens.css's --fs-*
+   scale; these seven ladders (16 sites, `grep -n dh-lr-name\\|dh-dchip\\|
+   dh-pill\\|dh-tbtn\\|dh-td-time\\|dh-gval\\|dh-live-title data.css`) are
+   left for whenever the scale gains an intermediate step, not before. */
+.dh-lr-name { font-size: 16px; font-weight: 800; font-style: italic; color: var(--text); }
+.dh-lr-meta { font-size: var(--fs-2); color: var(--dim); margin-top: calc(var(--gap) / 6); }
+.dh-table {
+  width: 100%; max-width: 100%; table-layout: fixed;
+  border-collapse: collapse; font-size: var(--fs-3); font-variant-numeric: tabular-nums;
+}
+.dh-table thead th {
+  text-align: left; font-size: var(--fs-1); letter-spacing: var(--ls-4);
+  color: var(--dim); font-weight: 700; padding: calc(var(--gap) / 3) calc(var(--gap) * 0.5) calc(var(--gap) * 2 / 3);
+  border-bottom: 1px solid var(--card-line);
+}
+.dh-table tbody tr { border-bottom: 1px solid rgba(255,255,255,0.05); }
+@media (hover: hover) and (pointer: fine) {
+  /* :not(.dh-cut) — an elimination band is a rule across the table, not a row
+     of data, so it does not light up when the pointer passes over it. */
+  .dh-table tbody tr:not(.dh-cut):hover { background: rgba(255,255,255,0.03); }
+}
+.dh-table td { padding: 7px calc(var(--gap) * 0.5); vertical-align: middle; }
+/* RACE IT's lap list: each lap row is a disclosure — a caret says it opens, the opened board hangs under it. */
+.dh-table tbody tr[aria-expanded] { cursor: pointer; }
+.dh-table tbody tr[aria-expanded] > td:first-child::before { content: "\25B8"; display: inline-block; width: 1.1em; text-align: center; vertical-align: middle; line-height: 1; opacity: 0.7; transition: transform 0.15s; }
+.dh-table tbody tr[aria-expanded="true"] > td:first-child::before { transform: rotate(90deg); opacity: 1; }
+.dh-table tbody tr[aria-expanded="true"] { background: rgba(255,255,255,0.05); }
+.dh-table tbody tr.dh-lap-board > td { padding: 0 0 calc(var(--gap) * 0.5) calc(var(--gap) * 1.2); background: rgba(255,255,255,0.03); }
+@media (prefers-reduced-motion: reduce) { .dh-table tbody tr[aria-expanded] > td:first-child::before { transition: none; } }
+.dh-td-pos { width: 26px; text-align: right; color: var(--dim); }
+/* chip + driver name side by side in the driver cell */
+.dh-td-driver {
+  min-width: 0; overflow: visible; text-overflow: clip; white-space: normal;
+  /* Spaces only — `anywhere` / `break-word` split VERSTAPPEN to VERSTAPPE / N
+     when the chip left too little inline room. Name sits under the chip so
+     the surname gets the full cell. */
+  overflow-wrap: normal; word-break: normal;
+  width: 28%;
+}
+.dh-td-driver .dh-codechip { display: inline-flex; margin-right: calc(var(--gap) * 0.5); vertical-align: middle; }
+.dh-td-driver .dh-name {
+  display: block; min-width: 0; white-space: normal;
+  overflow-wrap: normal; word-break: normal;
+}
+.dh-td-team {
+  color: var(--dim); font-size: var(--fs-2); width: 100px; max-width: 100px;
+  overflow: visible; text-overflow: clip; white-space: normal;
+  overflow-wrap: normal; word-break: normal;
+}
+.dh-td-grid { width: 30px; text-align: center; color: var(--dim); }
+.dh-td-time { width: 88px; text-align: right; color: #c4c4c8; font-size: var(--fs-micro); }
+.dh-td-pts  { width: 34px; text-align: right; font-weight: 700; }
+/* RESULTS: the picker stays at the top and everything under it is replaced
+   whole as the player moves between sessions. The min-height holds the card's
+   size across that swap, so picking FP2 does not collapse the panel to the
+   spinner's height and bounce it back. */
+.dh-res-body { margin-top: var(--gap); min-height: 160px; }
+/* The qualifying round selector (OVERALL / Q1 / Q2 / Q3), reusing .dh-pill —
+   the same chip the year row uses, so it inherits the tap-target floor below. */
+.dh-rounds { display: flex; flex-wrap: wrap; gap: calc(var(--gap) / 3); margin-bottom: var(--gap); }
+/* The band where a round's cut fell. Read as a rule across the table, not as a
+   row of data — no hover, no podium tint, and it must survive the narrow
+   breakpoint's column hiding, so it is styled on the cell not the columns. */
+.dh-cut td {
+  padding: calc(var(--gap) / 3) calc(var(--gap) * 0.5);
+  font-size: var(--fs-1); font-weight: 700; letter-spacing: var(--ls-4);
+  color: var(--dim); background: var(--plate);
+  border-top: 1px solid var(--red); text-align: center;
+}
+.dh-table tbody tr.dh-lr-p1 { color: var(--gold); background: color-mix(in srgb, var(--gold) 7%, transparent); border-left: 3px solid var(--gold); }
+.dh-table tbody tr.dh-lr-p2 { color: var(--silver); background: color-mix(in srgb, var(--silver) 5%, transparent); border-left: 3px solid var(--silver); }
+.dh-table tbody tr.dh-lr-p3 { color: var(--bronze); background: color-mix(in srgb, var(--bronze) 5%, transparent); border-left: 3px solid var(--bronze); }
+
+/* ---------- SCREEN LOOKS: DATA HUB fold (js/ui/screen-looks.js) ----------
+   SETTINGS › APPEARANCE › DATA HUB. Each rule keys on an <html data-look-
+   datahub-*> attribute the engine writes ONLY off the default, so the shipped
+   hub is every rule here not matching. The shared core knobs (BUTTON HEIGHT,
+   CORNERS, BACKGROUND, HEADINGS) live in css/responsive.css; WIDTH lives here
+   because the card is a .dh-card, not the .sheet the core WIDTH rule scales.
+   Every selector carries #datahub so it outranks the body[data-density] and
+   body[data-width] tiers above without depending on source order — and so the
+   telemetry popup (a separate dialog appended inside the hub) keeps its own
+   sizing: it has no .dh-card, .dh-tabs or standings rows of its own. */
+
+/* WIDTH — a share of the card's own 760px cap, never past the overlay. The
+   foldable-hinge max-width (css/components.css) still clamps it. */
+:root[data-look-datahub-w] #datahub .dh-card { width: min(calc(760px * var(--look-datahub-w, 1)), 100%); }
+
+/* ROW HEIGHT — one answer for the three row kinds the tabs draw: standings /
+   live / telemetry rows (.dh-row), schedule rows (.dh-race) and the results
+   tables. TIGHT trims only the block padding (the inline padding carries the
+   team-colour edge); ROOMY floors each row at the tap height, so a row reads
+   as a target. A table row takes `height` as its minimum (min-height does not
+   apply to table rows). The cut band and the lap board are rules and drawers,
+   not data rows, so they keep their shipped size. */
+:root[data-look-datahub-rows="tight"] #datahub .dh-row { padding-block: calc(var(--gap) / 6); }
+:root[data-look-datahub-rows="tight"] #datahub .dh-race { padding-block: calc(var(--gap) * 0.3); }
+:root[data-look-datahub-rows="tight"] #datahub .dh-table tbody tr:not(.dh-cut, .dh-lap-board) > td { padding-block: calc(var(--gap) / 6); }
+:root[data-look-datahub-rows="roomy"] #datahub :is(.dh-row, .dh-race) { min-height: var(--tap); }
+:root[data-look-datahub-rows="roomy"] #datahub .dh-table tbody tr:not(.dh-cut, .dh-lap-board) { height: var(--tap); }
+
+/* TAB STYLE — FILLED is the button base the tabs ship with. UNDERLINE drops
+   the plate entirely and marks the active tab with a red rule on the strip's
+   own hairline, the broadcast-graphics tab; PILL keeps the plate and rounds
+   it fully, and outranks CORNERS on purpose (the player asked for pills). */
+:root[data-look-datahub-tabs="underline"] #datahub .dh-tab {
+  background: transparent; border-color: transparent; border-radius: 0; box-shadow: none;
+}
+:root[data-look-datahub-tabs="underline"] #datahub .dh-tab.active { box-shadow: inset 0 -2px 0 var(--red); }
+:root[data-look-datahub-tabs="pill"] #datahub .dh-tab { border-radius: var(--r-pill); }
+
+/* ROW STRIPES — every other row on the plate surface, at half strength so a
+   striped row stays quieter than a hovered one. Rows that already carry a
+   meaning-bearing wash (leader, next race, podium, cut band, an open lap) keep
+   it, and a hovered list row keeps its hover. Parity counts siblings, so a lap
+   board opened inside a table shifts the stripes below it — acceptable for a
+   reading aid, and cheaper than a JS-written parity class. */
+:root[data-look-datahub-stripes="on"] #datahub :is(.dh-row:not(.dh-row-lead), .dh-race:not(.dh-race-next)):nth-child(even) {
+  background: color-mix(in oklab, var(--plate) 50%, transparent);
+}
+/* A striped row still answers the pointer: .dh-row's own hover fill, at the
+   stripe's weight and later (gated like every :hover, css/tokens.css policy). */
+@media (hover: hover) and (pointer: fine) {
+  :root[data-look-datahub-stripes="on"] #datahub .dh-row:not(.dh-row-lead):nth-child(even):hover { background: var(--plate); }
+}
+:root[data-look-datahub-stripes="on"] #datahub .dh-table tbody tr:nth-child(even):not(.dh-cut, .dh-lap-board, .dh-lr-p1, .dh-lr-p2, .dh-lr-p3, [aria-expanded="true"]) {
+  background: color-mix(in oklab, var(--plate) 50%, transparent);
+}
+
+/* live */
+.dh-livecard, .dh-card.dh-livecard { display: flex; flex-direction: column; gap: calc(var(--gap) / 3); }
+.dh-live-title { display: flex; align-items: center; flex-wrap: wrap; gap: calc(var(--gap) * 0.5); font-size: 17px; font-weight: 800; font-style: italic; color: var(--text); }
+.dh-live-type { font-size: var(--fs-2); color: var(--red); letter-spacing: var(--ls-4); }
+.dh-live-state {
+  padding: calc(var(--gap) / 6) calc(var(--gap) * 0.5);
+  border: 1px solid currentColor; border-radius: var(--r-pill);
+  font-size: var(--fs-micro); font-style: normal; letter-spacing: var(--ls-3);
+  color: var(--steel);
+}
+.dh-live-state[data-state="live"] { color: var(--faster); }
+.dh-live-state[data-state="upcoming"] { color: var(--gold); }
+.dh-live-state[data-state="completed"] {
+  color: var(--dim);
+  background: color-mix(in srgb, var(--steel) 10%, transparent);
+}
+.dh-live-sub { font-size: var(--fs-2); color: var(--dim); margin-top: calc(var(--gap) / 6); white-space: normal; overflow-wrap: anywhere; }
+.dh-live-team { color: var(--dim); font-size: var(--fs-2); }
+/* Gap column: the label used to be a fixed 45px with overflow:visible.
+   Titillium "+1.500" already wants ~50px, and larger race gaps ("+28.500")
+   more — the spill grew .dh-split-R's scrollWidth past the stacked scroll-
+   owner gate (browser-ui-hunt) whenever font metrics landed a pixel over.
+   Size the label in ch under tabular-nums, let the wrap shrink (name
+   ellipsizes), and clip so nothing can grow the pane sideways. */
+.dh-live-gapwrap {
+  display: flex; align-items: center; gap: calc(var(--gap) * 0.5);
+  flex: 1 1 auto; min-width: 0; justify-content: flex-end;
+  overflow: hidden;
+}
+.dh-live-gapbar {
+  height: 4px; border-radius: var(--r-xs); max-width: 80px;
+  flex: 0 1 auto; min-width: 0;
+}
+.dh-live-gaplbl {
+  font-size: var(--fs-1); color: var(--dim); font-variant-numeric: tabular-nums;
+  flex: 0 0 auto; width: 8ch; /* +###.### */
+  text-align: right; white-space: nowrap; overflow: hidden;
+}
+
+/* weather */
+.dh-weather { margin: calc(var(--gap) * 0.5) 0 var(--gap); }
+/* min(...) floors throughout — see #sel-teams in css/menus.css: `minmax(90px,
+   1fr)` still emits a 90px track in an 80px box, and overflows it. */
+.dh-wx-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(90px, 100%), 1fr)); gap: calc(var(--gap) * 2 / 3); }
+.dh-wx-cell { background: var(--plate); border-radius: var(--r-md); padding: 8px 10px; }
+.dh-wx-label { font-size: var(--fs-1); letter-spacing: var(--ls-4); color: var(--dim); }
+.dh-wx-value { font-size: var(--fs-5); font-weight: 700; color: var(--text); margin-top: calc(var(--gap) / 6); }
+
+/* ---------- telemetry tab ---------- */
+.dh-driverpick { display: flex; flex-wrap: wrap; gap: 5px; margin: 4px 0 10px; }
+.dh-dchip {
+  font-size: var(--fs-micro); font-weight: 800;
+  padding: 5px 9px; border-radius: var(--r-sm);
+  background: var(--plate);
+  border: 1px solid var(--plate-line);
+  border-left-width: 3px;
+  color: var(--text);
+}
+.dh-dchip.active { background: var(--plate-on); border-color: var(--red); color: var(--text); }
+/* A phone: 22 "HUL · Hulkenberg" chips were nine rows, most of a screen
+   between the session pickers and the lap they select. The three-letter code
+   alone, in an even grid (the surname stays in each chip's aria-label). */
+body[data-width="narrow"] .dh-driverpick { display: grid; grid-template-columns: repeat(auto-fill, minmax(calc(5 * var(--fs-micro)), 1fr)); }
+body[data-width="narrow"] .dh-dchip > span { display: none; }
+.dh-telem-detail { display: flex; flex-direction: column; gap: 10px; }
+.dh-canvas {
+  width: 100%; max-width: 600px; height: auto;
+  background: #07070c; border: 1px solid var(--card-line);
+  border-radius: var(--r-md); display: block;
+  cursor: ew-resize;
+  /* The trace is SCRUBBED by dragging it (js/data/telemetry.js attachScrub), and
+     without this the drag is not ours to have: the hub's .dh-content scroller
+     claims a touch that starts here, Safari fires pointercancel, and the panel
+     scrolls while the cursor stays put. setPointerCapture does not prevent
+     that — only touch-action does. */
+  touch-action: none;
+}
+.dh-canvas.dh-map {
+  cursor: default;
+  /* --svhz, not dvh: this canvas lives inside the zoomed .dh-card (the
+     card's own header says heights here use the compensated units), and dvh
+     is explicitly not the house unit (tokens.css). The plain 320px first
+     line stays as the no-var fallback. */
+  max-width: 320px; max-width: min(320px, calc(42 * var(--svhz)));
+  margin: 0 auto;
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+}
+/* colour key for the car dots under the track map */
+.dh-maplegend {
+  display: flex; justify-content: center; flex-wrap: wrap; gap: calc(var(--gap) / 3) calc(var(--gap) * 7 / 6);
+  font-size: var(--fs-2); color: var(--dim); margin-top: -4px;
+}
+.dh-legend-dot.dh-mapdot {
+  width: 10px; height: 10px; border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.6);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+/* slow->fast swatch matching the map's speed colouring */
+.dh-gradbar {
+  display: inline-block; width: 44px; height: 6px; border-radius: var(--r-xs);
+  background: linear-gradient(90deg in oklab, #2222ff, #ccb4cc, #ff2222);
+}
+/* Short local viewport: cap the track map so content doesn't overflow.
+   Narrow (zoom-aware) portrait-ish cards use a slightly larger cap. Compact
+   wins when both apply — height is the scarce axis. */
+body[data-width="narrow"] .dh-canvas.dh-map { max-width: min(256px, calc(34 * var(--svhz))); }
+body[data-density="compact"] .dh-canvas.dh-map { max-width: 220px; }
+.dh-legend { display: flex; flex-wrap: wrap; gap: calc(var(--gap) * 2 / 3) var(--gap); font-size: var(--fs-2); color: var(--dim); margin-top: -2px; }
+.dh-legend-item {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: transparent; border: none; border-radius: var(--r-sm);
+  padding: calc(var(--gap) * 0.25) calc(var(--gap) * 0.5); margin: 0; color: inherit; font: inherit;
+  letter-spacing: var(--ls-2); cursor: pointer; transition: opacity 0.12s;
+}
+@media (hover: hover) and (pointer: fine) {
+  button.dh-legend-item:hover { background: var(--plate); }
+}
+button.dh-legend-item:active { background: rgba(255, 255, 255, 0.09); }
+.dh-legend-item.dh-off { opacity: 0.35; }
+.dh-legend-item.dh-legend-static { cursor: default; font-style: italic; }
+/* a colour key is not a target: no chip tap floor, so the map key stays a few short lines */
+.dh-legend-item.dh-legend-static { min-height: 0; min-width: 0; }
+/* compare-mode legend group: [LABEL][solid chip][dashed chip] — the label
+   toggles both lines, each chip toggles that driver's line */
+.dh-leg-group {
+  display: inline-flex; align-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.09); border-radius: var(--r-sm);
+  overflow: hidden;
+}
+.dh-leg-group .dh-legend-item { padding: calc(var(--gap) * 0.25) calc(var(--gap) * 0.5); border-radius: 0; }
+.dh-leg-lbl { font-weight: 700; }
+.dh-leg-line { border-left: 1px solid rgba(255, 255, 255, 0.09); }
+.dh-leg-line .dh-legend-dot { width: 14px; }
+.dh-legend-dot { width: 10px; height: 3px; border-radius: var(--r-xs); display: inline-block; }
+
+/* ---------- lap-replay transport + gauge dashboard ---------- */
+/* the three live-tab control strips share one flex-centre statement */
+.dh-transport, .dh-livecontrols, .dh-class-head { display: flex; align-items: center; }
+.dh-transport { gap: calc(var(--gap) * 2 / 3); margin: calc(var(--gap) * 0.5) 0; flex-wrap: wrap; row-gap: calc(var(--gap) * 0.5); }
+.dh-tbtn {
+  font-size: var(--fs-micro); font-weight: 800; letter-spacing: var(--ls-3);
+  padding: 7px 14px; border-radius: var(--r-pill);
+  background: var(--plate);
+  border: 1px solid var(--plate-line);
+  color: var(--text);
+}
+.dh-trestart { padding: 7px var(--gap); }
+.dh-tplay.dh-tplaying { background: var(--plate-on); border-color: var(--red); color: var(--text); }
+.dh-trates { display: flex; gap: calc(var(--gap) / 3); }
+.dh-ratebtn {
+  font-size: var(--fs-2); font-weight: 800;
+  padding: calc(var(--gap) * 0.5) 10px; border-radius: var(--r-pill);
+  background: var(--plate);
+  border: 1px solid var(--plate-line);
+  color: var(--text);
+}
+.dh-ratebtn.active { background: var(--plate-on); border-color: var(--red); color: var(--text); }
+.dh-thint { font-size: var(--fs-2); color: var(--steel); font-style: italic; margin-left: auto; }
+/* On very narrow portrait, hide the scrub hint to keep transport on one row */
+body[data-width="narrow"] .dh-thint { display: none; }
+.dh-onboard.dh-tplaying { background: #2a6df0; border-color: #2a6df0; color: #fff; }
+.dh-delta { max-width: 600px; height: auto; margin-top: -2px; }
+
+.dh-dash {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(68px, 100%), 1fr)); gap: calc(var(--gap) * 2 / 3);
+  margin: calc(var(--gap) * 0.5) 0 calc(var(--gap) * 2 / 3); padding: 10px var(--gap);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--r-md);
+}
+.dh-gcell { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.dh-glabel { font-size: var(--fs-micro); letter-spacing: var(--ls-4); color: var(--dim); white-space: nowrap; }
+.dh-gval { font-family: var(--font-hud); font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--text); line-height: 1; }
+.dh-gspeed .dh-gval { color: #39d0ff; }
+.dh-gbar { height: 8px; border-radius: var(--r-sm); background: rgba(255, 255, 255, 0.09); overflow: hidden; margin-top: auto; }
+.dh-gfill { height: 100%; width: 0%; border-radius: var(--r-sm); transition: width 0.05s linear; }
+.dh-gdrs-pill { font-size: var(--fs-4); font-weight: 800; letter-spacing: var(--ls-3); color: var(--dim); line-height: 1; margin-top: calc(var(--gap) / 6); display: inline-block; margin-right: calc(var(--gap) * 2 / 3); }
+.dh-gdrs-pill.dh-on { color: #00e0c0; text-shadow: 0 0 8px rgba(0, 224, 192, 0.6); }
+/* compare-mode dual gauges: primary value/bar first, compare second */
+.dh-gvalrow { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+.dh-gval2 { font-size: 0.8em; opacity: 0.85; }
+.dh-gbar2 { height: 5px; margin-top: calc(var(--gap) * 0.25); }
+.dh-gfill2 { opacity: 0.6; }
+.dh-gdrs-pill.dh-gdrs2 { font-size: var(--fs-2); opacity: 0.85; }
+/* SIGN CONVENTION, shared with the lane board below. The telemetry module
+   computes both deltas as `timeAtDist(other, d) - t` and comments both
+   ">0: … is behind", so dh-pos is the SLOWER side on each. These two were the
+   wrong way round — the TELEMETRY tab's compare gauge painted the trailing
+   driver green and the leading one red — while the lane-board pair fifty lines
+   down, keyed on the identical expression, had it right. Keep them matched;
+   delta-sign-colour asserts it. */
+.dh-gdelta.dh-pos { color: var(--slower); }   /* behind the compare reference */
+.dh-gdelta.dh-neg { color: var(--faster); }   /* ahead of it */
+
+/* ---------- live controls + sortable classification ---------- */
+.dh-livecontrols { gap: calc(var(--gap) * 2 / 3); margin-bottom: 10px; }
+.dh-livebtn {
+  font-size: var(--fs-2); font-weight: 800; letter-spacing: var(--ls-3);
+  padding: calc(var(--gap) * 0.5) var(--gap); border-radius: var(--r-pill);
+  background: var(--plate);
+  border: 1px solid var(--plate-line);
+  color: var(--text);
+}
+.dh-livebtn.active { background: var(--plate-on); border-color: var(--red); color: var(--text); }
+/* full-width action under a lane tray / detail (LOAD LAP, CLEAR LANES, BACK) —
+   was three inline style writes in js/data/telemetry.js. A data attribute, not
+   a class: the cssClasses ratchet is at its ceiling and this is a layout
+   variant of .dh-livebtn, not a new component. */
+.dh-livebtn[data-block] { width: 100%; margin-top: var(--gap); }
+.dh-livebtn[data-block="tight"] { margin-top: calc(var(--gap) / 2); }
+/* ---------- compare lanes (multi-driver + cross-session telemetry) ---------- */
+/* session badge on a lane row / header / legend chip (R, Q, P2, …) */
+.dh-lane-ses {
+  font-size: var(--fs-micro); font-weight: 800; letter-spacing: var(--ls-4);
+  padding: 1px 5px; border-radius: var(--r-pill); margin-left: calc(var(--gap) / 3);
+  background: rgba(255, 255, 255, 0.12); color: #cfe0ff; flex: 0 0 auto;
+}
+/* remove-lane button on a tray row.
+   max(20px, --tap-min): the bare 20px was under the WCAG 24px floor even at
+   100% (the only such control left in the 2026-08-21 sweep), and painted 8px
+   at UI SIZE 40% inside the zoomed .dh-card. The glyph stays --fs-4. */
+.dh-lane-x {
+  margin-left: auto; flex: 0 0 auto;
+  width: max(20px, var(--tap-min)); height: max(20px, var(--tap-min));
+  line-height: 1; padding: 0;
+  border-radius: var(--r-pill); border: 1px solid var(--plate-line);
+  background: var(--plate); color: var(--text); font-size: var(--fs-4);
+}
+/* Gated per the tokens.css policy: a tap sticks :hover on iOS. */
+@media (hover: hover) and (pointer: fine) {
+  .dh-lane-x:hover { background: color-mix(in oklab, var(--red) 80%, transparent); border-color: var(--red); }
+}
+.dh-lane-clear { background: rgba(255, 255, 255, 0.04); }
+/* the 3-4 lane readout board in the gauge column */
+.dh-laneboard { display: flex; flex-direction: column; gap: calc(var(--gap) * 0.25); margin-top: calc(var(--gap) * 2 / 3); grid-column: 1 / -1; }
+.dh-laneboard-row { display: flex; align-items: center; gap: calc(var(--gap) * 0.5); font-size: var(--fs-2); }
+.dh-laneboard-code { font-weight: 800; letter-spacing: var(--ls-2); min-width: 34px; }
+.dh-laneboard-spd { margin-left: auto; font-variant-numeric: tabular-nums; opacity: 0.9; }
+.dh-laneboard-dl {
+  min-width: 46px; text-align: right; font-variant-numeric: tabular-nums;
+  color: var(--dim);
+}
+.dh-laneboard-dl.dh-pos { color: var(--slower); }   /* behind the reference */
+.dh-laneboard-dl.dh-neg { color: var(--faster); }   /* ahead of the reference */
+.dh-live-updated { font-size: var(--fs-2); color: var(--steel); margin-left: auto; }
+.dh-class-head { gap: 10px; }
+.dh-class-head .dh-section { margin: calc(var(--gap) * 0.5) 0 calc(var(--gap) * 2 / 3); flex: 1; }
+.dh-sorts { display: flex; gap: calc(var(--gap) / 3); flex: 0 0 auto; }
+.dh-sortbtn {
+  font-size: var(--fs-1); font-weight: 800; letter-spacing: var(--ls-3);
+  padding: calc(var(--gap) / 3) calc(var(--gap) * 0.75); border-radius: var(--r-pill);
+  background: var(--plate);
+  border: 1px solid var(--plate-line);
+  color: var(--text);
+}
+.dh-sortbtn.active { background: var(--plate-on); border-color: var(--red); color: var(--text); }
+
+/* ---------- session picker (LIVE + TELEMETRY) ---------- */
+.dh-picker {
+  display: flex; flex-wrap: wrap; gap: calc(var(--gap) * 2 / 3) var(--gap); align-items: flex-end;
+  margin-bottom: var(--gap); padding-bottom: var(--gap);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.dh-pick-years {
+  display: flex; flex-wrap: nowrap; gap: calc(var(--gap) / 3);
+  overflow-x: auto; overflow-y: hidden;
+  overscroll-behavior-x: contain; touch-action: pan-x;
+  scrollbar-width: none;
+}
+.dh-pick-years::-webkit-scrollbar { display: none; }
+.dh-pill {
+  font-size: var(--fs-micro); font-weight: 700;
+  padding: 5px calc(var(--pad) * 0.5); border-radius: var(--r-pill);
+  background: var(--plate);
+  border: 1px solid var(--plate-line);
+  color: var(--text);
+  flex: 0 0 auto;
+}
+.dh-pill.active { background: var(--plate-on); border-color: var(--red); color: var(--text); }
+.dh-pill:disabled { opacity: 0.4; cursor: default; }
+
+/* ---------- TAP TARGETS ----------
+   Every one of these is something you tap — a season, a driver, a sort order, a
+   playback control, a legend trace. They were sized purely by their text and
+   came out 24-31px tall, well under the 40px this game gives a chip elsewhere
+   (--chip-h, which is what .sel-chip uses, and which already drops to 36 on a
+   short landscape phone). The driver picker is the worst case: twenty-odd chips
+   at 24px, on the tab you are most likely to be using one-handed.
+   Height only — the text still sets the width, so nothing reflows sideways. */
+.dh-pill, .dh-dchip, .dh-sortbtn, .dh-livebtn, .dh-tbtn, .dh-ratebtn, .dh-legend-item {
+  min-height: var(--chip-h);
+  /* "Height only" (above) held at >=100%, but inside the zoomed .dh-card the
+     narrow chips (0.5x/1x/2x rate buttons) painted ~12px WIDE at UI SIZE 40%.
+     --tap-min is 24 local px at >=100% — under every current chip width, so
+     nothing reflows sideways there; it only grows as the zoom shrinks. */
+  min-width: var(--tap-min);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+/* the legend's colour swatches are decoration inside their button, not the
+   target — the button around them is what grew */
+.dh-legend-item .dh-legend-dot { flex: 0 0 auto; }
+/* EXPORT tab — browser-side OpenF1 start-line gathering */
+.dh-export { display: flex; flex-direction: column; gap: 10px; }
+.dh-export-note { font-size: var(--fs-2); line-height: 1.5; color: #b6b6c0; }
+.dh-export-row { display: flex; gap: calc(var(--gap) * 0.5); }
+.dh-export-status {
+  margin: 0; padding: 8px 10px; border-radius: var(--r-sm);
+  background: var(--surf-1); border: 1px solid var(--card-line);
+  color: #cfcfd6; font-size: var(--fs-2); line-height: 1.45;
+  font-family: inherit;
+  white-space: pre-wrap; overflow-wrap: break-word; word-break: normal;
+  /* One axis. The text already `pre-wrap`s and `break-word`s, so there is
+     nothing to scroll sideways to — `overflow: auto` turned the other axis on
+     by shorthand, not by intent. Same trap as #overlay in css/menus.css. */
+  max-height: 320px; overflow-y: auto; overflow-x: hidden;
+  overscroll-behavior-y: contain; touch-action: pan-y;
+}
+.dh-pick-field { display: flex; flex-direction: column; gap: calc(var(--gap) * 0.25); }
+.dh-pick-label { font-size: var(--fs-micro); letter-spacing: var(--ls-5); color: var(--dim); }
+.dh-pick-select {
+  background: #15151d; color: var(--text);
+  border: 1px solid var(--plate-line); border-radius: var(--r-sm);
+  padding: calc(var(--gap) * 0.5) calc(var(--gap) * 2 / 3); font: inherit; font-size: var(--fs-3);
+  max-width: 220px; min-width: 0;
+  min-height: var(--tap-paint);
+}
+/* Narrow local width: selects take full width so they don't truncate names */
+body[data-width="narrow"] .dh-pick-field { width: 100%; }
+body[data-width="narrow"] .dh-pick-select { max-width: none; width: 100%; }
+
+body[data-width="narrow"] .dh-tab { font-size: var(--fs-1); padding: calc(var(--gap) * 0.5) 10px; }
+
+/* Dashboard metric cells can shrink below a label's min-content width on
+   split-view phones. Let MAX SPEED / DISTANCE wrap inside their auto-fit cell
+   instead of spilling into the neighbouring metric. */
+body[data-width="narrow"] .dh-glabel {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.15;
+}
+
+/* Last Race: hide secondary columns before they can overflow. Driver, position,
+   time/status, and points remain. Compact landscape is often still "wide" in
+   --wide-at units, so density also drops TEAM. */
+body[data-width="narrow"] .dh-th-team,
+body[data-width="narrow"] .dh-td-team { display: none; }
+body[data-width="narrow"] .dh-th-grid,
+body[data-width="narrow"] .dh-td-grid { display: none; }
+body[data-density="compact"] .dh-th-team,
+body[data-density="compact"] .dh-td-team { display: none; }
+
+body[data-width="narrow"] .dh-table td,
+body[data-width="narrow"] .dh-table thead th { padding: calc(var(--gap) * 0.5) calc(var(--gap) / 3); }
+body[data-width="narrow"] .dh-td-time { width: auto; font-size: var(--fs-micro); }
+body[data-width="narrow"] .dh-td-pts { width: 28px; }
+
+body[data-density="compact"] .dh-row { padding: 4px 4px; font-size: var(--fs-2); }
+body[data-density="compact"] .dh-pts { min-width: 36px; }
+body[data-density="compact"] .dh-gap { min-width: 30px; }
+
+/* A 320px window (iPad Slide Over / Split View) leaves ~264 own px of row —
+   the 150+100px LIVE floors and the 200px constructors floor clip behind
+   .dh-content's overflow-x: hidden from ~110% UI SIZE up. Let the rows
+   negotiate: min-width: 0 defers to the ellipsis the names already carry. */
+body[data-width="narrow"] .dh-row { flex-wrap: wrap; }
+body[data-width="narrow"] .dh-live-gapwrap { min-width: 60px; }
+body[data-width="narrow"] .dh-cons-main { min-width: 0; flex-wrap: wrap; }
+
+/* NARROW STANDINGS NAMES. Constructor .dh-name was flex:0 1 auto and shrank to
+   0px on phones (Mercedes/RB → "M." / "R…" via the chip alone — 390×844 probe
+   2026-10-14). Give the name a real floor, wrap on spaces, park the H2H bar on
+   its own row, and slim pts/gap so "Alpine F1 Team" fits before any ellipsis. */
+body[data-width="narrow"] .dh-row .dh-name,
+body[data-width="narrow"] .dh-cons-main .dh-name {
+  flex: 1 1 7em;
+  min-width: 6.5em;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: normal;
+  word-break: normal;
+  line-height: 1.25;
+}
+body[data-width="narrow"] .dh-pts { min-width: 2.75ch; padding-inline: 0; }
+body[data-width="narrow"] .dh-gap { min-width: 2.5ch; }
+body[data-width="narrow"] .dh-h2h-wrap {
+  flex: 1 1 100%;
+  min-width: 0;
+  max-width: none;
+  align-items: stretch;
+  order: 2;
+}
+body[data-width="narrow"] .dh-cons-main { order: 1; }
+body[data-width="narrow"] .dh-codechip { min-width: 0; padding-inline: calc(var(--gap) / 3); }
+
+/* NARROW/COMPACT RESULTS TABLE: allow driver names to wrap instead of ellipsizing.
+   Long names like "Andrea Kimi Antonelli" truncate in the narrow column. With
+   white-space:normal the name wraps to 2 lines; the table-layout:fixed column
+   grows to content and the codechip stays on the first baseline. */
+body[data-width="narrow"] .dh-td-driver,
+body[data-density="compact"] .dh-td-driver {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+body[data-width="narrow"] .dh-td-driver .dh-name,
+body[data-density="compact"] .dh-td-driver .dh-name {
+  white-space: normal;
+  word-break: normal;
+  /* break-word, not anywhere: a surname that fits the cell stays whole; one
+     wider than the cell (HULKENBERG at UI SIZE 200%) wraps instead of the
+     shared .dh-name ellipsis cutting it to "HULKENBE…". */
+  overflow-wrap: break-word;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+/* ── Schedule 2-column grid on a short+wide local viewport ──────────────── */
+.dh-race-grid { display: flex; flex-direction: column; }
+body[data-density="compact"][data-width="wide"] .dh-race-grid {
+  /* minmax(0, …), not 1fr: a bare 1fr floors each column at its longest race
+     name's min-content width, so a wide GP title pushed the grid ~10px past the
+     card edge. The 0 floor lets the cell shrink and the name ellipsize. */
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 var(--gap);
+}
+
+/* ── Session picker: GP + session stacked so the full meeting label fits ──
+   Side-by-side + min-width:0 clipped "Bahrain Grand Prix · Kuala Lumpur"
+   to "Bahrain Grand Prix · Kuala" on the 760px card. */
+.dh-pick-fields { display: flex; flex-direction: column; flex: 1 1 100%; gap: calc(var(--gap) * 2 / 3); }
+.dh-pick-fields .dh-pick-field { flex: 1 1 auto; min-width: 0; width: 100%; }
+.dh-pick-fields .dh-pick-select { max-width: none; width: 100%; }
+
+/* ── Two-pane split layout (Live + Telemetry) ─────────── */
+.dh-split { display: flex; flex-direction: column; gap: 10px; flex: 0 0 auto; min-width: 0; min-height: auto; }
+.dh-split-L { display: flex; flex-direction: column; gap: 10px; flex: 0 0 auto; min-width: 0; }
+.dh-split-R {
+  display: flex; flex-direction: column; gap: var(--gap); flex: 1; min-width: 0;
+  overflow: visible;
+}
+
+/* Portrait: normal stacked flow, left pane content above right pane */
+.dh-split-L { padding-bottom: calc(var(--gap) / 3); }
+.dh-split-R { padding-top: calc(var(--gap) / 3); }
+
+/* Short+wide local viewport: left pane = sidebar; right pane = scrollable main.
+   Viewport landscape+max-height could not see UI SIZE. */
+body[data-density="compact"][data-width="wide"] {
+  .dh-content.dh-has-split { padding: 0; overflow: hidden; }
+  .dh-split {
+    flex-direction: row;
+    flex: 1;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+    gap: 0;
+  }
+  .dh-split-L {
+    width: 260px;
+    flex-shrink: 0;
+    overflow-y: auto;
+    overscroll-behavior-y: contain; touch-action: pan-y;
+    overflow-x: hidden;
+    padding: 10px var(--gap);
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
+    gap: 8px;
+  }
+  .dh-split-R {
+    flex: 1;
+    overflow-y: auto;
+    overscroll-behavior-y: contain; touch-action: pan-y;
+    overflow-x: hidden;
+    padding: 10px 14px;
+    min-width: 0;
+    gap: 10px;
+  }
+  .dh-split-L .dh-picker {
+    margin-bottom: 0;
+    padding-bottom: 8px;
+    gap: calc(var(--gap) * 0.5) 8px;
+  }
+  .dh-split-L .dh-pick-years { gap: calc(var(--gap) * 0.25); }
+  .dh-split-L .dh-pill { padding: calc(var(--gap) * 0.25) 7px; font-size: var(--fs-micro); }
+  .dh-split-L .dh-pick-fields { flex-direction: column; gap: 5px; }
+  .dh-split-L .dh-pick-label { font-size: var(--fs-micro); }
+  .dh-split-L .dh-pick-select { padding: 4px calc(var(--gap) * 0.5); font-size: var(--fs-2); }
+  .dh-split-L .dh-livecard { gap: 2px; }
+  .dh-split-L .dh-live-title { font-size: var(--fs-micro); gap: 5px; }
+  .dh-split-L .dh-live-sub { font-size: var(--fs-1); line-height: 1.3; }
+  .dh-split-L .dh-live-type { font-size: var(--fs-micro); }
+  .dh-split-L .dh-livecontrols { gap: 5px; flex-wrap: nowrap; margin-bottom: 0; }
+  .dh-split-L .dh-livebtn { padding: 4px 8px; font-size: var(--fs-1); }
+  .dh-split-L .dh-live-updated { font-size: var(--fs-micro); }
+  .dh-split-L .dh-driverpick { gap: calc(var(--gap) * 0.25); margin: 0; }
+  .dh-split-L .dh-dchip { padding: calc(var(--gap) * 0.25) calc(var(--gap) * 0.5); font-size: var(--fs-micro); border-left-width: 2px; }
+  .dh-split-R .dh-wx-grid { grid-template-columns: repeat(2, 1fr); gap: calc(var(--gap) * 0.5); }
+  .dh-split-R .dh-wx-cell { padding: calc(var(--gap) * 0.5) 8px; }
+  .dh-split-R .dh-wx-value { font-size: var(--fs-4); }
+  #dh-lr-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: calc(var(--gap) * 0.5); }
+  .dh-lr-name { font-size: 15px; }
+  .dh-dash { gap: calc(var(--gap) * 0.5); padding: 8px 10px; }
+  .dh-gval { font-size: 17px; }
+}
+
+/* ── Telemetry player popup ───────────────────────────── */
+/* A runtime <dialog> since round 11 — the SCRIM STAYS ON THE ELEMENT: the
+   dialog is stretched full-viewport (the UA sizes a dialog fit-content with
+   auto margins, hence the explicit margin/width/height, same lesson as
+   #track-detail), so backdrop-click targets the dialog itself and the paint
+   is identical to the old fixed div. ::backdrop is therefore silenced.
+   The closed-state rule is restated HERE because this file is @layer
+   overlays, which outranks components' generic dialog.screen:not([open])
+   guard — without it a closed-but-unhidden dialog lays out in the seam and
+   Chromium drops boxes on top-layer re-attach (the round-10 #customize bug). */
+.dh-tpopup {
+  position: fixed; inset: 0; z-index: 60;
+  margin: 0; border: 0;
+  width: 100%; height: 100%;
+  max-width: none; max-height: none;
+  background: rgba(4, 4, 8, 0.88);
+  color: inherit;
+  display: flex; align-items: center; justify-content: center;
+  /* Shared safe tokens, same as the hub and every other overlay — the raw
+     env() here could not be reached by the notch simulation and, paired with a
+     98vw card, left the trace panel poking under a landscape notch. */
+  padding: var(--safe-t) var(--safe-r) var(--safe-b) var(--safe-l);
+}
+.dh-tpopup:not([open]) { display: none; }
+.dh-tpopup::backdrop { background: none; }
+.dh-tpopup-card {
+  width: min(860px, 100%);
+  /* The .dh-card treatment this popup never got: it is appended to #datahub
+     (a SIBLING of the zoomed card), so SETTINGS ▸ UI SIZE silently did not
+     apply to the whole telemetry screen — the exact A13/A14 defect the hub
+     card fixed. Fit-managed with the capped zoom var, and the svh family
+     divides by the zoom so heights stay a constant fraction of the screen. */
+  zoom: var(--sheet-scale, var(--ui-scale));
+  --fit-at: 240px;
+  --svhz: calc(1svh / var(--sheet-scale, var(--ui-scale)));
+  --tap-paint: max(24px, calc(var(--tap-paint-at) / var(--sheet-scale, var(--ui-scale))));
+  max-height: calc(100 * var(--svhz) - (var(--sat) + var(--sab) + 2 * var(--gut)) / var(--ui-scale));
+  background: var(--surf-1);
+  border: 1px solid var(--card-line);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  display: flex; flex-direction: column;
+  box-shadow: var(--edge), var(--lift-2);
+}
+.dh-tpopup-hdr {
+  display: flex; align-items: center; gap: 10px;
+  padding: calc(var(--pad) * 0.5) calc(var(--gap) * 4 / 3);
+  border-bottom: 1px solid var(--card-line);
+  /* Same paint as every .sheet-head — the popup keeps its denser padding and
+     its title+subtitle stack (the #cr-titlebar shape), but the wash is the
+     shared token, not a third hand-mixed gradient. */
+  background: var(--grad-head);
+  flex: 0 0 auto;
+}
+.dh-tpopup-title {
+  flex: 1; display: flex; flex-direction: column; gap: calc(var(--gap) / 6);
+  font-size: var(--fs-5); font-weight: 800; font-style: italic; color: var(--text);
+}
+.dh-tpopup-sub {
+  font-size: var(--fs-2); font-weight: 600; font-style: normal;
+  color: var(--dim); letter-spacing: var(--ls-2);
+}
+.dh-tpopup-body {
+  flex: 1; min-height: 0;
+  display: flex; flex-direction: column;
+  overflow-y: auto;
+  /* what .pane gives every other scroll region in the app */
+  overscroll-behavior-y: contain; touch-action: pan-y;
+}
+
+/* Content areas */
+.dh-telem-main {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: calc(var(--gap) * 7 / 6) calc(var(--gap) * 4 / 3);
+}
+/* Compact one-line driver headers inside the popup — swatch · name ·
+   sectors · lap time, so the chart gets the vertical space */
+.dh-tpopup .dh-livecard { gap: calc(var(--gap) / 6); }
+.dh-tpopup .dh-live-title { font-size: var(--fs-micro); }
+.dh-tpopup .dh-live-sub { font-size: var(--fs-1); }
+.dh-thead { display: flex; align-items: center; gap: calc(var(--gap) * 0.5); min-width: 0; }
+.dh-thead .dh-swatch { width: 10px; height: 10px; }
+/* The lane's NAME wins the squeeze. Both of these ellipsise, so the only
+   question is which one loses characters first — and "George Russel" is a
+   worse thing to show than a clipped sector string the numbers below already
+   repeat. `flex: 1 1 0` on the sector strip gives it a basis of ZERO, so it
+   claims only leftover space instead of joining the initial distribution and
+   dragging the name down with it. */
+.dh-tname { flex: 0 1 auto; min-width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dh-tsect { font-family: var(--font-hud); font-variant-numeric: tabular-nums;
+  flex: 1 1 0; min-width: 0; margin-left: auto;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  text-align: right;
+  font-size: var(--fs-1); font-weight: 600; font-style: normal;
+  color: var(--dim); font-variant-numeric: tabular-nums; letter-spacing: var(--ls-1);
+}
+.dh-tlap { font-family: var(--font-hud); font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
+  font-size: var(--fs-2); font-weight: 700; font-style: normal;
+  color: var(--text); font-variant-numeric: tabular-nums;
+}
+.dh-telem-side {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 0 calc(var(--gap) * 4 / 3) calc(var(--gap) * 7 / 6);
+}
+body[data-width="narrow"] .dh-telem-main { padding: 10px var(--gap); gap: calc(var(--gap) * 2 / 3); }
+/* A phone: the lane header is two lines, not one squeezed into ellipses
+   ("PRIMARY T…  S1 22.456 …"). Name and lap time on the first; the role and
+   the sectors wrap under them (the ::after is the line break). */
+body[data-width="narrow"] .dh-thead { flex-wrap: wrap; row-gap: 0; }
+body[data-width="narrow"] .dh-thead::after { content: ""; order: 1; flex-basis: 100%; }
+body[data-width="narrow"] .dh-thead .dh-tlap { margin-left: auto; }
+body[data-width="narrow"] .dh-thead .dh-tsect { order: 2; flex: 0 1 auto; margin-left: 0; text-align: left; }
+body[data-width="narrow"] .dh-telem-side { padding: 0 var(--gap) 10px; gap: calc(var(--gap) * 2 / 3); }
+
+/* Wide local viewport: chart left, gauges + map right. Compact chrome stays
+   density-keyed so UI SIZE 200% on a landscape phone still tightens the header. */
+body[data-width="wide"] {
+  .dh-tpopup-body { flex-direction: row; overflow: hidden; }
+  .dh-telem-main {
+    flex: 1; min-width: 0;
+    overflow-y: auto; overflow-x: hidden;
+    overscroll-behavior-y: contain; touch-action: pan-y;
+  }
+  .dh-telem-side {
+    flex-shrink: 0;
+    overflow-y: auto; overflow-x: hidden;
+    overscroll-behavior-y: contain; touch-action: pan-y;
+    border-left: 1px solid rgba(255, 255, 255, 0.08);
+  }
+}
+body[data-width="wide"][data-density="compact"] {
+  .dh-telem-main { padding: 10px var(--gap); gap: 7px; }
+  .dh-telem-side { width: 200px; padding: 10px var(--gap); gap: 8px; }
+  .dh-telem-side .dh-canvas.dh-map { max-width: 176px; }
+  .dh-telem-side .dh-dash { gap: 5px; padding: 8px 10px; }
+  .dh-telem-side .dh-gval { font-size: 15px; }
+  .dh-telem-side .dh-glabel { font-size: var(--fs-micro); }
+  /* Short landscape phone: the body is the one scroller (a column that scrolled
+     on its own hid the map legend behind the card edge), the chart takes the
+     free width, and the readout is two fixed columns whose labels wrap. */
+  .dh-tpopup-body { overflow-y: auto; align-items: flex-start; overscroll-behavior-y: contain; touch-action: pan-y; }
+  .dh-telem-main { overflow: visible; }
+  .dh-telem-side { overflow: visible; }
+  .dh-telem-main .dh-canvas, .dh-telem-main .dh-delta { max-width: none; }
+  .dh-telem-side .dh-dash { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+/* The readout labels wrap instead of colliding with their neighbour column. */
+.dh-telem-side .dh-glabel { white-space: normal; overflow-wrap: anywhere; line-height: 1.15; letter-spacing: var(--ls-1); }
+body[data-width="wide"][data-density="normal"] {
+  .dh-telem-main { padding: var(--gap) calc(var(--gap) * 7 / 6); }
+  .dh-telem-side { width: 340px; padding: var(--gap) calc(var(--gap) * 7 / 6); }
+  /* --svhz, not dvh — same correction as the base rule this overrides: this
+     canvas lives inside the zoomed .dh-card, and a raw 42dvh at 200% painted
+     672 of 800 physical px for a sidebar mini-map (intended: 336). */
+  .dh-telem-side .dh-canvas.dh-map { max-width: min(100%, calc(42 * var(--svhz))); }
+  .dh-telem-main .dh-canvas { max-width: none; }
+  .dh-tpopup-card { width: min(1280px, 96vw); max-width: none; }
+}
+body[data-density="compact"] {
+  .dh-tpopup-card {
+    /* the card is zoomed: heights use --svhz (÷ zoom), or it outgrows the screen
+       by the zoom factor and the centred card loses its header off the top */
+    max-height: calc(100 * var(--svhz) - (var(--sat) + var(--sab)) / var(--ui-scale));
+    border-radius: var(--r-md);
+    width: 100%;
+  }
+  .dh-tpopup-hdr { padding: 2px 10px; gap: 8px; }
+  .dh-tpopup-title {
+    font-size: var(--fs-2); flex-direction: row; align-items: baseline; gap: 8px; min-width: 0;
+  }
+  .dh-tpopup-title > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dh-tpopup-sub { font-size: var(--fs-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dh-tpopup .dh-close { width: 34px; height: 34px; font-size: var(--fs-4); border-radius: var(--r-sm); }
+  .dh-tpopup .dh-legend { gap: calc(var(--gap) * 0.25) 8px; font-size: var(--fs-1); margin-top: -4px; }
+  .dh-tpopup .dh-legend-item { padding: 2px 4px; }
+  .dh-tpopup .dh-transport { gap: 5px; flex-wrap: nowrap; margin: 2px 0; }
+  .dh-tpopup .dh-thint { display: none; }
+  .dh-tpopup .dh-tbtn { padding: 5px calc(var(--pad) * 0.5); font-size: var(--fs-micro); }
+}
+
+/* Solid hub card for prefers-reduced-transparency / prefers-contrast (the
+   remedy css/components.css gives `.sheet`). Restated here because this file's
+   @layer overlays outranks components, so the base `.dh-card { background:
+   var(--panel) }` above would otherwise always win. */
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .dh-card { background: var(--surf-1); }
+}
+} /* @layer overlays */
