@@ -70,7 +70,7 @@ export interface AwardRules {
   readonly conflict?: boolean;
 }
 
-export type AwardCar = Pick<RaceCar, "driverId" | "code" | "team" | "classified" | "retired">;
+export type AwardCar = Pick<RaceCar, "driverId" | "code" | "team"> & Partial<Pick<RaceCar, "classified" | "retired">>;
 
 /** canRace (:337-339). */
 export function canRace(season: SeasonRecord | null | undefined, rounds: number): boolean {

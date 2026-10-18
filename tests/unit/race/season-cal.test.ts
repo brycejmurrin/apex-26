@@ -13,7 +13,7 @@ interface Step { op: Op; out: unknown; season: unknown; rank?: string[] }
 
 describe("season calendar and save", () => {
   const fx = revive<{ list: CalCircuit[]; scripts: { ops: Step[]; saved: Record<string, string> }[] }>(fixture("season-cal"));
-  const drivers = Array.from({ length: 8 }, (_, i) => ({ driverId: "abcd"[i % 4] + ":" + (i >> 2), code: "D" + i, team: { id: "abcd"[i % 4] as string } }));
+  const drivers = Array.from({ length: 8 }, (_, i) => ({ driverId: "abcd"[i % 4] + ":" + (i >> 2), code: "D" + i, team: { id: "abcd"[i % 4] as string, tier: 0 } }));
 
   fx.scripts.forEach((script, k) => {
     it(`script ${k} matches SeasonCal step by step`, () => {
