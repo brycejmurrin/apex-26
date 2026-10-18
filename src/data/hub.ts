@@ -13,6 +13,7 @@ import { f1Api, type F1Api, type Meeting, type Session } from "./api";
 import { clear, compoundLetter, el } from "./dom";
 import type { HubDeps, HubSelection, TabNode, TabOutcome } from "./hub-deps";
 import { log } from "./log";
+import "./hub.css";
 import { LIST, type Rgb, type Team } from "./teams";
 
 export const NO_LIVE_MSG = "No live data — sessions appear here during race weekends " +

@@ -293,7 +293,7 @@ export function cautionsFor(raceControl: Rows<OpenF1RaceControl>, secs?: Secs | 
 
 /** The grid: each driver's FIRST position snapshot of the race session (taken on the grid, before the start). */
 export function gridFor(positions: Rows<OpenF1Position>): Record<number, number> {
-  const first: Record<number, { date: string; pos: number }> = {};
+  const first: Record<string, { date: string; pos: number }> = {};
   for (const p of arr(positions)) {
     const n = num(p && p.driver_number), pos = num(p && p.position);
     if (n == null || pos == null) continue;
@@ -301,8 +301,8 @@ export function gridFor(positions: Rows<OpenF1Position>): Record<number, number>
     const prev = first[n];
     if (!(n in first) || d < prev!.date) first[n] = { date: d, pos };
   }
-  const out: Record<number, number> = {};
-  for (const n in first) out[n as unknown as number] = first[n as unknown as number]!.pos;
+  const out: Record<string, number> = {};
+  for (const n in first) out[n] = first[n]!.pos;
   return out;
 }
 

@@ -17,8 +17,8 @@
  */
 import type { CarSample, LocationSample, Session, SessionDriver } from "../../api";
 import type { HubDeps, MountedTab } from "../../hub-deps";
-import { log } from "../../log";
 import { countsByDriver } from "../../tab-utils";
+import { mountTab } from "../mount";
 import {
   create as createModel, cumDist, dcode, dropStrays, gapLimitMs, isGap, laneRole, locAt, locBounds,
   sessionShort, type TelLane, type TelView,
@@ -472,36 +472,8 @@ export function create(ctx: HubDeps): TelemetryTab {
  */
 export function mount(host: HTMLElement, deps: HubDeps): MountedTab & { tab: TelemetryTab } {
   const tab = create(deps);
-  let gen = 0;
-  let live = true;
-  function refresh(): Promise<void> {
-    const my = ++gen;
-    deps.clear(host);
-    host.appendChild(deps.spinner());
-    return tab.loadTelemetry().then(function (node) {
-      if (!live || my !== gen) return;
-      deps.clear(host);
-      host.appendChild(node);
-    }, function (err: unknown) {
-      // The hub's tab-load failure path (hub.js:418-422) belongs to the shell;
-      // here a failed load leaves the empty-telemetry message, not a spinner.
-      log.warn("telemetry load failed", err);
-      if (!live || my !== gen) return;
-      deps.clear(host);
-      host.appendChild(deps.emptyMsg(deps.NO_TELEM_MSG));
-    });
-  }
-  void refresh();
-  return {
-    tab,
-    refresh,
-    unmount(): void {
-      live = false;
-      ++gen;
-      tab.closeTelemPopup(true);
-      deps.clear(host);
-    },
-  };
+  const mounted = mountTab("telemetry", host, deps, tab.loadTelemetry, function () { tab.closeTelemPopup(true); });
+  return { tab, refresh: mounted.refresh, unmount: mounted.unmount };
 }
 
 // Retain the established diagnostic surface for existing callers and probes
