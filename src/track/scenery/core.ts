@@ -28,8 +28,8 @@ export interface GeomCore {
   swayMatAt(id: number, base: RVec3, up: RVec3, y0: number, y1: number): (x: number, y: number, z: number) => number;
   /** geom.js:58. */
   readonly ROUND_K: number;
-  /** geom.js:59. */
-  roundNormals(out: GeomBuffer, v0: number, base: RVec3, up: RVec3, k: number): void;
+  /** geom.js:59; `k` omitted = `ROUND_K` (geom.js:61). */
+  roundNormals(out: GeomBuffer, v0: number, base: RVec3, up: RVec3, k?: number): void;
   /** geom.js:360. */
   readonly MIN_SEP: number;
   /** geom.js:366. */
@@ -183,6 +183,12 @@ export interface AssetsCore {
   modelSync(id: string): BakedMesh | null;
 }
 
+/** f1-game js/track/tracks.js:775 (`Tracks`), the members scenery reads. */
+export interface TracksCore {
+  /** tracks.js:723: drawn-terrain height at world XZ, or null off the terrain mesh. */
+  terrainY(track: BuildTrack, x: number, z: number): number | null;
+}
+
 export interface SceneryCore {
   readonly geom: GeomCore;
   readonly mesh: MeshCore;
@@ -193,4 +199,10 @@ export interface SceneryCore {
   readonly scalar: ScalarCore;
   /** Absent in a build without the asset pack (bakedModel then returns false). */
   readonly assets: AssetsCore | null;
+  /**
+   * The track shell's terrain lookup. f1-game guards each use with
+   * `typeof Tracks !== "undefined"` (nature.js:613, :1314, :1343), so null
+   * takes the same fallback.
+   */
+  readonly tracks: TracksCore | null;
 }
