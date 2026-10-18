@@ -1,45 +1,62 @@
 /**
- * The app shell: one renderer, one track, one player car, the fixed-step loop,
- * input and the chase camera. f1-game's equivalent is the `tick`/`tickBody`/
- * `render` trio in js/game.js:8311-8458; here each subsystem is its own module
- * and this file only wires them.
+ * The app shell for the Phase 1 slice: the Monza time trial (PLAN T1.12).
  *
- * Phase 1 placeholders, replaced as the lanes merge (PLAN T1.12):
- * - track: `FlatLoop` until the track lane's Monza `TrackQuery` lands;
- * - car body: `stepPlaceholder` until the physics lane's player step lands;
- * - scene: plain three meshes until the render and car lanes land.
+ * f1-game's equivalent is the `tick`/`tickBody`/`render` trio in
+ * js/game.js:8311-8458. Here each subsystem is its own module and this file
+ * only wires them:
+ * - track: the track lane's `loadPhysicsTrack` (built Monza, `PhysicsTrack`);
+ * - physics: the physics lane's `createPlayerStep` with f1-game's shipped
+ *   tunables (`SHIPPED_TUNE`) and the solo seams (no pits, green flag, calm, dry);
+ * - render: the render lane's `TrackRenderer` (track meshes, sky, sun, post);
+ * - car model: a placeholder body until the car lane's model lands (T1.8);
+ * - shell: the fixed-step loop, input, chase camera and HUD.
  */
-import * as THREE from "three/webgpu";
-import type { CarState, PlayerInput } from "../contracts/sim";
-import type { TrackQuery, TrackSample } from "../contracts/track";
+import { BoxGeometry, Group, Mesh, MeshStandardNodeMaterial } from "three/webgpu";
+import type { CarHandle, MeshData, TrackMeshKey } from "../contracts/render";
+import type { PlayerInput } from "../contracts/sim";
+import type { TrackSample } from "../contracts/track";
 import { ChaseCam } from "../camera/chase";
-import { Input } from "../input/input";
-import { FIXED_DT, FixedStepLoop, lerp, lerpAngle, type FrameResult } from "../sim/loop";
 import { Hud, type HudState } from "../hud/hud";
 import { dashKph } from "../hud/readouts";
-import { FlatLoop } from "./flat-loop";
-import { LapTimer } from "./lap-timer";
-import { makePlaceholderCar, placeCar, stepPlaceholder } from "./placeholder-body";
+import { Input } from "../input/input";
+import { PhysicsConsts } from "../physics/consts";
+import type { PhysicsTrack } from "../physics/track";
+import * as Tyre from "../physics/tyre-model";
+import type { TrackRenderer } from "../render/renderer";
+import { FIXED_DT, FixedStepLoop, lerp, lerpAngle, type FrameResult } from "../sim/loop";
+import { CALM, createPlayerStep, defaultDriveTune, DRY, GREEN_FLAG, NO_ASSISTS, NO_PITS, type DriveTune, type PlayerCar, type PlayerStep, type PlayerWorld } from "../sim/player-step";
+import { newLapTiming } from "../sim/player-step-lap";
+import type { Track, TrackGeometry } from "../track/core/types";
+import { gridCar, makePlayerCar } from "./player-car";
+
+/**
+ * f1-game's shipped driving feel: the values its physics goldens record in the
+ * pinned world (tests/goldens/physics-tape-*.json.gz `initial.world`), which
+ * differ from `DriveTune.create`'s constructor defaults.
+ */
+export function shippedTune(): DriveTune {
+  return { ...defaultDriveTune(), WHEELBASE: 4.2, STEER_EXPO: 2.111111111111111, STEER_MAX_SLIP: 0.35, STEER_SPEED_REF: 55, PACE: 0.8396192830323017 };
+}
 
 export interface AppOptions {
-  readonly renderer: THREE.WebGPURenderer;
-  readonly canvas: HTMLCanvasElement;
+  readonly renderer: TrackRenderer;
+  /** The built track and its physics query (`loadPhysicsTrack`). */
+  readonly track: { readonly track: Track; readonly query: PhysicsTrack };
   /** Where the HUD mounts; omit for a headless app. */
   readonly hudParent?: HTMLElement;
 }
 
-/** Interpolation snapshot of the player before the last step (game.js:8432-8436 `rPrev*`). */
-interface PrevPose { px: number; pz: number; head: number; s: number; x: number }
+const TRACK_KEYS: readonly TrackMeshKey[] = ["floor", "road", "terrain", "props", "glass", "water", "gate", "startline"];
 
 export class App {
-  readonly track: TrackQuery;
-  readonly player: CarState;
+  readonly track: PhysicsTrack;
+  readonly trackId: string;
+  readonly player: PlayerCar;
+  readonly world: PlayerWorld;
+  readonly physics: PlayerStep;
   readonly input = new Input();
-  readonly timer = new LapTimer();
-  readonly hud: Hud | null;
   readonly loop: FixedStepLoop;
-  readonly scene = new THREE.Scene();
-  readonly camera = new THREE.PerspectiveCamera(60, 1, 0.1, 4000);
+  readonly hud: Hud | null;
   /** Simulated seconds since the session started. */
   simT = 0;
   /** Physics steps taken since boot. */
@@ -50,22 +67,61 @@ export class App {
   paused = false;
 
   private readonly chase: ChaseCam;
-  private readonly prev: PrevPose = { px: 0, pz: 0, head: 0, s: 0, x: 0 };
-  private readonly carMesh: THREE.Object3D;
-  private readonly renderer: THREE.WebGPURenderer;
+  private readonly carHandle: CarHandle;
+  private readonly renderer: TrackRenderer;
+  private readonly smp: TrackSample = { p: [0, 0, 0], t: [0, 0, 1], r: [1, 0, 0], hw: 7 };
 
   constructor(opts: AppOptions) {
     this.renderer = opts.renderer;
-    this.track = new FlatLoop();
-    this.player = makePlaceholderCar();
-    placeCar(this.player, this.track, -20);
-    this.chase = new ChaseCam(this.track);
+    this.track = opts.track.query;
+    this.trackId = opts.track.track.def.id;
+    const tune = shippedTune();
+    const def = opts.track.track.def;
+    const vTop = (): number => PhysicsConsts.VMAX * Math.max(tune.PACE, 0.05);
+    const tyres = Tyre.create({
+      raceTyreWear: "off",   // time trial: game.js:1752 tyres.setLevel(isTimeTrial() ? "off" : …)
+      track: { length: this.track.length, def: def.tyreSeverity === undefined ? null : { tyreSeverity: def.tyreSeverity } },
+      weatherArc: null,
+      raceWeather: "dry",
+      lapsTarget: 0,
+      session: "tt",
+      LAT_MAX: PhysicsConsts.LAT_MAX,
+      aTop: () => PhysicsConsts.ACCEL * Math.max(tune.PACE, 0.05),   // game.js:378
+      vTop,
+    });
+    this.world = {
+      track: this.track,
+      def,
+      tune,
+      raceT: 0,
+      state: "race",
+      session: "tt",
+      lapsTarget: 0,
+      dirtyAir: "classic",
+      aeroMode: "manual",
+      gearsManual: false,
+      autoThrottle: false,
+      liveInput: true,
+      soundOn: false,
+      weather: DRY,
+      wind: CALM,
+      pits: NO_PITS,
+      raceCtl: GREEN_FLAG,
+      tyres,
+      aeroZoneAt: () => false,
+      timing: newLapTiming(),
+      netPlay: { owns: () => false },
+    };
+    this.physics = createPlayerStep(this.world);
+    this.player = makePlayerCar();
+    gridCar(this.player, this.track, 0);
+    this.chase = new ChaseCam(this.track, vTop());
     this.loop = new FixedStepLoop({
       beforeStep: () => this.snapshot(),
       step: (dt) => this.step(dt),
     });
-    this.snapshot();
-    this.carMesh = buildScene(this.scene, this.track);
+    uploadTrack(this.renderer, opts.track.track.geo);
+    this.carHandle = this.renderer.addCar(placeholderCarModel());
     this.hud = opts.hudParent ? new Hud(opts.hudParent) : null;
   }
 
@@ -79,23 +135,24 @@ export class App {
   step(dt = FIXED_DT): void {
     const inp = this.input.sample(dt);
     this.lastInput = inp;
-    const crossed = stepPlaceholder(this.player, inp, this.track, dt);
-    this.timer.step(dt, crossed);
-    this.player.lap = this.timer.lap;
-    this.player.lapTime = this.timer.lapTime;
+    // A scripted input (__apex.setInput) is not the live devices (player-step.ts PlayerWorld.liveInput).
+    (this.world as { liveInput: boolean }).liveInput = !this.input.overridden;
+    this.physics.step(this.player, dt, inp, NO_ASSISTS);
     this.simT += dt;
     this.stepCount++;
   }
 
+  /** game.js:8432-8436: the pose before the step, for render interpolation. */
   private snapshot(): void {
-    const c = this.player, p = this.prev;
-    p.px = c.px; p.pz = c.pz; p.head = c.head; p.s = c.s; p.x = c.x;
+    const c = this.player;
+    c.rPrevS = c.s; c.rPrevX = c.x; c.rPrevPx = c.px; c.rPrevPz = c.pz; c.rPrevHead = c.head;
   }
 
   /** One display frame at rAF timestamp `now` (ms). */
   frame(now: number): void {
     this.input.poll();
     if (this.input.consume("pause")) this.paused = !this.paused;
+    if (this.input.consume("recover")) this.physics.rescuePlayer(this.player);
     if (this.paused) this.input.clearEdges();
     const f = this.loop.frame(now, !this.paused);
     this.lastFrame = f;
@@ -104,89 +161,61 @@ export class App {
   }
 
   hudState(): HudState {
-    const c = this.player, t = this.timer;
-    return { kph: Math.max(0, dashKph(c.speed)), gear: c.gear, lap: t.lap, laps: 0, lapTime: t.lapTime, last: t.last, best: t.best };
+    const c = this.player;
+    return {
+      kph: Math.max(0, dashKph(c.speed, this.physics.pace.vStd)),
+      gear: c.gear, lap: c.lap, laps: 0, lapTime: c.lapTime,
+      last: c.lastLap ?? Number.NaN, best: c.best,
+    };
   }
 
   private render(alpha: number, dt: number): void {
-    const c = this.player, p = this.prev, L = this.track.length;
-    const px = lerp(p.px, c.px, alpha), pz = lerp(p.pz, c.pz, alpha);
-    const head = lerpAngle(p.head, c.head, alpha);
-    let ds = c.s - p.s;
+    const c = this.player, L = this.track.length;
+    const pS = c.rPrevS ?? c.s, pX = c.rPrevX ?? c.x;
+    const px = lerp(c.rPrevPx ?? c.px, c.px, alpha), pz = lerp(c.rPrevPz ?? c.pz, c.pz, alpha);
+    const head = lerpAngle(c.rPrevHead ?? c.head, c.head, alpha);
+    let ds = c.s - pS;
     if (ds < -L / 2) ds += L; else if (ds > L / 2) ds -= L;
-    const s = this.track.wrapS(p.s + ds * alpha), x = lerp(p.x, c.x, alpha);
-    this.carMesh.position.set(px, 0, pz);
-    this.carMesh.rotation.set(0, head, 0);
+    const s = this.track.wrapS(pS + ds * alpha), x = lerp(pX, c.x, alpha);
+    const y = this.track.sample(s, this.smp).p[1];
+    this.carHandle.setPose(px, y, pz, head, 0, 0);
     const pose = this.chase.solve({ s, x, speed: c.speed, px, pz, head, yawRate: c.yawRateCur, pitch: 0, deploy: c.deploying, dt });
-    const cam = this.camera;
-    cam.position.set(pose.eye[0], pose.eye[1], pose.eye[2]);
-    cam.lookAt(pose.target[0], pose.target[1], pose.target[2]);
-    const fovDeg = pose.fovY * 180 / Math.PI;
-    if (cam.fov !== fovDeg) { cam.fov = fovDeg; cam.updateProjectionMatrix(); }
-    this.renderer.render(this.scene, cam);
+    this.renderer.setCamera(pose);
+    this.renderer.renderFrame();
   }
 
-  resize(w: number, h: number): void {
-    this.camera.aspect = w / Math.max(1, h);
-    this.camera.updateProjectionMatrix();
+  resize(w: number, h: number, dpr: number): void {
+    this.renderer.resize(w, h, dpr);
   }
 }
 
-/** Ground, road ribbon and a placeholder car box. Returns the car object. */
-function buildScene(scene: THREE.Scene, track: TrackQuery): THREE.Object3D {
-  scene.background = new THREE.Color(0x8fb4d9);
-  scene.add(new THREE.HemisphereLight(0xcfe0ff, 0x4a5a3a, 1.4));
-  const sun = new THREE.DirectionalLight(0xffffff, 2.2);
-  sun.position.set(200, 400, 100);
-  scene.add(sun);
+/** Upload every track mesh slot (f1-game tracks.js:304-418 `createMesh` per slot). */
+function uploadTrack(r: TrackRenderer, geo: TrackGeometry | undefined): void {
+  if (!geo) return;
+  for (const key of TRACK_KEYS) {
+    const g = geo[key];
+    if (!g || !g.pos.length) continue;
+    const data: MeshData = {
+      pos: Float32Array.from(g.pos),
+      nrm: Float32Array.from(g.nrm),
+      col: Float32Array.from(g.col),
+      idx: Uint32Array.from(g.idx),
+      ...(g.mat ? { mat: Float32Array.from(g.mat) } : {}),
+      ...(g.trk ? { trk: Float32Array.from(g.trk) } : {}),
+    };
+    r.uploadTrackMesh(key, data);
+  }
+}
 
-  const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(4000, 4000),
-    new THREE.MeshStandardNodeMaterial({ color: 0x3f6b35, roughness: 1 }),
-  );
-  ground.rotation.x = -Math.PI / 2;
-  ground.position.y = -0.02;
-  scene.add(ground);
-
-  // 5 cm over the ground: software GL (swiftshader) loses a 2 cm gap to depth precision.
-  scene.add(ribbon(track, 0, 0x2b2d31, 0.05));
-  // Start/finish line.
-  const sc: TrackSample = { p: [0, 0, 0], t: [0, 0, 1], r: [1, 0, 0], hw: 7 };
-  track.sample(0, sc);
-  const line = new THREE.Mesh(
-    new THREE.BoxGeometry(sc.hw * 2, 0.02, 1.2),
-    new THREE.MeshStandardNodeMaterial({ color: 0xffffff, roughness: 0.8 }),
-  );
-  line.rotation.y = Math.atan2(sc.t[0], sc.t[2]);
-  line.position.set(sc.p[0], 0.06, sc.p[2]);
-  scene.add(line);
-
-  const car = new THREE.Group();
-  const body = new THREE.Mesh(
-    new THREE.BoxGeometry(1.9, 0.8, 4.8),
-    new THREE.MeshStandardNodeMaterial({ color: 0xe10600, roughness: 0.4, metalness: 0.1 }),
+/** A box the size of the car's collider (4.8 x 2.0 m, vantage.js:85) until the car lane lands. */
+function placeholderCarModel(): Group {
+  const car = new Group();
+  const body = new Mesh(
+    new BoxGeometry(1.9, 0.8, 4.8),
+    new MeshStandardNodeMaterial({ color: 0xe10600, roughness: 0.4, metalness: 0.1 }),
   );
   body.position.y = 0.45;
+  body.castShadow = true;
   car.add(body);
-  scene.add(car);
   return car;
-}
-
-/** A flat triangle strip along the track, `hw + extra` either side. */
-function ribbon(track: TrackQuery, extra: number, color: number, y: number): THREE.Mesh {
-  const n = Math.max(64, Math.ceil(track.length / 4));
-  const pos = new Float32Array((n + 1) * 2 * 3);
-  const idx: number[] = [];
-  const sc: TrackSample = { p: [0, 0, 0], t: [0, 0, 1], r: [1, 0, 0], hw: 7 };
-  for (let i = 0; i <= n; i++) {
-    track.sample((i / n) * track.length, sc);
-    const w = sc.hw + extra;
-    pos.set([sc.p[0] - sc.r[0] * w, sc.p[1] + y, sc.p[2] - sc.r[2] * w, sc.p[0] + sc.r[0] * w, sc.p[1] + y, sc.p[2] + sc.r[2] * w], i * 6);
-    if (i < n) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }   // up-facing: r x t = +Y
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-  g.setIndex(idx);
-  g.computeVertexNormals();
-  return new THREE.Mesh(g, new THREE.MeshStandardNodeMaterial({ color, roughness: 0.9 }));
 }

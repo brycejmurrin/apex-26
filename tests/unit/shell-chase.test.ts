@@ -1,11 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ChaseCam } from "../../src/camera/chase";
 import { FlatLoop } from "../../src/app/flat-loop";
-import { makePlaceholderCar, placeCar, stepPlaceholder } from "../../src/app/placeholder-body";
-import type { PlayerInput } from "../../src/contracts/sim";
 import type { TrackSample } from "../../src/contracts/track";
-
-const flat: PlayerInput = { steer: 0, throttle: true, brake: false, throttleLevel: 1, brakeLevel: 0, shiftUp: false, shiftDown: false, aero: false, aeroToggle: false, overtake: false, boost: false };
 
 describe("FlatLoop", () => {
   it("is a closed unit-speed loop with r = t x up = (-t.z, 0, t.x)", () => {
@@ -24,28 +20,18 @@ describe("FlatLoop", () => {
   });
 });
 
-describe("placeholder body", () => {
-  it("drives a lap of the flat loop on full throttle and steering toward the centre", () => {
-    const track = new FlatLoop();
-    const c = makePlaceholderCar();
-    placeCar(c, track, -20);
-    let crossings = 0;
-    for (let i = 0; i < 60 * 120 && crossings < 2; i++) {
-      // A simple driver: steer to hold x = 0 (reads only its own state).
-      const steer = Math.max(-1, Math.min(1, -c.x * 0.3 + 0.4));   // + = right
-      if (stepPlaceholder(c, { ...flat, steer }, track, 1 / 60)) crossings++;
-    }
-    expect(crossings).toBe(2);
-    expect(c.prog).toBeGreaterThan(track.length);
-  });
-});
+/** A car at arc `s`, centred, heading down the track. */
+function carAt(track: FlatLoop, s: number): { s: number; px: number; pz: number; head: number } {
+  const p: TrackSample = { p: [0, 0, 0], t: [0, 0, 0], r: [0, 0, 0], hw: 0 };
+  track.sample(s, p);
+  return { s, px: p.p[0], pz: p.p[2], head: Math.atan2(p.t[0], p.t[2]) };
+}
 
 describe("ChaseCam", () => {
   it("sits behind and above the car, looking ahead of it", () => {
     const track = new FlatLoop();
     const cam = new ChaseCam(track);
-    const c = makePlaceholderCar();
-    placeCar(c, track, 100);
+    const c = carAt(track, 100);
     const pose = cam.solve({ s: c.s, x: 0, speed: 0, px: c.px, pz: c.pz, head: c.head, yawRate: 0, pitch: 0, deploy: false, dt: 0 });
     const hx = Math.sin(c.head), hz = Math.cos(c.head);
     const eyeAlong = (pose.eye[0] - c.px) * hx + (pose.eye[2] - c.pz) * hz;
@@ -60,8 +46,7 @@ describe("ChaseCam", () => {
   it("widens the FOV and opens the rig with speed", () => {
     const track = new FlatLoop();
     const cam = new ChaseCam(track);
-    const c = makePlaceholderCar();
-    placeCar(c, track, 100);
+    const c = carAt(track, 100);
     const at = (speed: number) => {
       const p = cam.solve({ s: c.s, x: 0, speed, px: c.px, pz: c.pz, head: c.head, yawRate: 0, pitch: 0, deploy: false, dt: 0 });
       return { fov: p.fovY, back: Math.hypot(p.eye[0] - c.px, p.eye[2] - c.pz) };
