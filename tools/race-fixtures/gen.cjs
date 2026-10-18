@@ -378,3 +378,143 @@ write("caution-machine", [machineRun(5, false), machineRun(6, true), machineRun(
   }
   write("start-lights", { credit, lamps });
 }
+
+// ─── weather arc (lap-wide) ────────────────────────────────────────────────
+{
+  const ctx = context({ Particles: { rainShow() {}, rainSeed() {} }, GameAudio: { startRain() {}, stopRain() {} } });
+  load(ctx, "js/core/hash32.js");
+  ctx.Career = { hash: read(ctx, "Hash32").unit };
+  load(ctx, "js/race/weather-arc.js");
+  const W = read(ctx, "WeatherArc"), r = rng(12);
+  const runs = [];
+  for (let k = 0; k < 24; k++) {
+    const announced = [];
+    const G = {
+      raceWeather: "dry", raceT: 0, state: "race", track: null, soundOn: false, headlessMode: false,
+      isWetRoad: () => false, isRaining: () => false, initRainDrops() {}, applyRaceSettings() {},
+      announce: (t) => announced.push(t), netPlay: { active: () => false }, simSeed: () => 1, raceRound: 0,
+    };
+    const wa = W.create(G, { isTimeTrial: () => false, isQuali: () => false });
+    const from = pick(r, W.VALID), to = pick(r, W.VALID), dur = 30 + Math.floor(r() * 300);
+    G.raceWeather = pick(r, W.VALID);
+    const w0 = G.raceWeather;
+    const start = wa.startArc(from, to, dur);
+    const steps = [];
+    let retarget = null;
+    for (let i = 0; i < 900; i++) {
+      G.raceT += 1;
+      if (i === 120 && r() < 0.4) { retarget = { to: pick(r, W.VALID), dur: 20 + Math.floor(r() * 200) }; wa.startArc(G.raceWeather, retarget.to, retarget.dur); }
+      wa.tick(1);
+      steps.push([G.raceWeather, wa.wetness(), wa.arc ? wa.arc.wetIn : -1]);
+    }
+    runs.push({ w0, from, to, dur, armed: !!start, wetIn: start ? start.wetIn : null, retarget, steps, announced });
+  }
+  const plans = [];
+  for (let i = 0; i < 200; i++) {
+    const seed = Math.floor(r() * 2 ** 32), round = Math.floor(r() * 30), from = pick(r, W.VALID), laps = pick(r, [0, 3, 5, 25, 57]), len = pick(r, [0, 3337, 5793, 7004]);
+    const G = { raceWeather: from, simSeed: () => seed, raceRound: round, seasonMode: false, track: { total: len }, state: "race", lapsTarget: laps, raceLaps: laps };
+    const wa = W.create(G, { isTimeTrial: () => false, isQuali: () => false });
+    plans.push({ seed, round, from, laps, len, plan: wa.previewPlan({ laps, len, from }) });
+  }
+  const seqs = [];
+  for (const a of W.VALID) for (const b of W.VALID) seqs.push({ a, b, seq: W.arcSeq(a, b) });
+  write("weather-arc", { runs, plans, seqs });
+}
+
+// ─── qualifying model ──────────────────────────────────────────────────────
+{
+  const ctx = context();
+  load(ctx, "js/core/hash32.js");
+  const H = read(ctx, "Hash32");
+  let cons = {};
+  ctx.Career = { inCareer: () => false, hash: H.unit, devFor: () => 0 };
+  ctx.PhysicsConsts = { VMAX: 72, DIFF: { easy: { ai: 0.851 }, normal: { ai: 0.911 }, hard: { ai: 1.030 } } };
+  ctx.DriverRatings = { get: (code) => ({ consistency: cons[code] }) };
+  ctx.Teams = { TIER_V: [0.9695, 0.9674, 0.9648, 0.9622, 0.9594] };
+  let curv = null;
+  ctx.Tracks = { curvature: (t, s) => curv(s) };
+  load(ctx, "js/race/quali-model.js");
+  const Q = read(ctx, "Quali"), r = rng(13);
+  const cases = [];
+  for (let k = 0; k < 24; k++) {
+    const total = 3300 + Math.floor(r() * 3700), n = 400 + Math.floor(r() * 1200);
+    const kp = { a: 0.002 + r() * 0.03, f1: 3 + Math.floor(r() * 9), b: r() * 0.02, f2: 7 + Math.floor(r() * 13) };
+    curv = (s) => kp.a * Math.sin(2 * Math.PI * kp.f1 * s / total) + kp.b * Math.cos(2 * Math.PI * kp.f2 * s / total);
+    const pace = pick(r, [1, 1, 0.44, 0.7, 1.34]);
+    const env = { latMax: 30 + r() * 10, aTop: 9 * pace, brake: 40, vTop: 72 * pace, difficulty: pick(r, ["easy", "normal", "hard", "bogus"]) };
+    const cars = [];
+    cons = {};
+    for (let i = 0; i < 12; i++) {
+      const code = "C" + i;
+      cons[code] = Math.round(r() * 100);
+      cars.push({ driverId: "t" + (i >> 1) + ":" + (i & 1), code, name: "N" + i, team: { id: "t" + (i >> 1) }, isPlayer: i === 5, tierV: 0.96 + r() * 0.01, skill: 0.9 + r() * 0.1, grip: pick(r, [1, 1, 0.8]) });
+    }
+    const round = Math.floor(r() * 24), seed = Math.floor(r() * 2 ** 32);
+    const G = {
+      LAT_MAX: env.latMax, aTop: () => env.aTop, BRAKE: env.brake, vTop: () => env.vTop, difficulty: env.difficulty,
+      track: { n, total, def: { id: "trk" + k } }, cars, seasonMode: true, seasonRound: round, simSeed: () => seed,
+      gripMult: (c) => (c ? c.grip : 1), flow: "gp",
+    };
+    const q = Q.create(G);
+    const driven = pick(r, [0, 0, 80 + r() * 20, Infinity, { "t0:0": 85, "t3:1": 90 }]);
+    const rows = q.preview(driven);
+    cases.push({ total, n, kp, env, cars, cons: clone(cons), round, seed, driven: driven === Infinity ? "Inf" : driven, rows, pole: q.referencePole(), lap0: q.carLap(cars[0], G.track, 1) });
+  }
+  const medals = [];
+  for (let i = 0; i < 100; i++) { const t = pick(r, [0, -1, 80 + r() * 20]), pole = pick(r, [0, 85]); medals.push({ t, pole, m: Q.medalFor(t, pole) }); }
+  write("quali-model", { cases, medals });
+}
+
+// ─── sporting regs ─────────────────────────────────────────────────────────
+{
+  const ctx = context(); load(ctx, "js/race/sporting-regs.js");
+  const S = read(ctx, "SportingRegs"), r = rng(14);
+  const comp = [];
+  for (let i = 0; i < 150; i++) {
+    const log = []; const n = Math.floor(r() * 4);
+    for (let j = 0; j < n; j++) log.push({ code: pick(r, ["S", "M", "H", "I", "W", "?"]) });
+    const cars = [{ code: "A", tyreLog: log, retired: r() < 0.1, dsq: r() < 0.1 ? "old" : undefined, penalty: pick(r, [undefined, 5]) }];
+    const o = { applies: r() < 0.8, suspended: r() < 0.3 };
+    const init = clone(cars);
+    const out = S.applyCompoundRule(cars, o);
+    comp.push({ init, o, run: S.compoundsRun(log), out: out.length, cars: clone(cars) });
+  }
+  // A field circulating under random cautions; the player passes and is passed.
+  // fieldSim() is replayed verbatim by tests/unit/race/sporting-regs.test.ts from the same seed,
+  // so only the watchers' outputs are stored (each row only when it changed).
+  const pass = [];
+  for (let k = 0; k < 40; k++) {
+    const rr = rng(1400 + k);
+    const n = 8, field = [];
+    for (let i = 0; i < n; i++) field.push({ code: "K" + i, prog: 1000 - i * 30 + rr() * 10, speed: 60, retired: false, finished: false, lap: 1, pitState: "none" });
+    field[0].prog = 1210 + rr() * 10;   // most of a lap up on the player: it comes up behind to lap them (blue flags)
+    const p = field[4];
+    const troubledIdx = Math.floor(rr() * n);
+    const win = pick(rr, [5, 3, undefined]);
+    const w = S.createPassWatch(win, (o) => o === field[troubledIdx] && o.prog > 1500);
+    const b = S.createBlueFlagWatch((q) => q.prog < 0);
+    const steps = [];
+    let level = 0, last = "";
+    for (let t = 0; t < 1200; t++) {
+      if (t % 60 === 0) level = pick(rr, [0, 0, 0, 1, 2, 3]);
+      for (const c of field) {
+        if (c.retired || c.finished) continue;
+        c.prog += (c === p ? 1 + rr() * 0.9 : 0.9 + rr() * 0.7) + (c === field[0] ? 0.3 : 0);
+        if (rr() < 0.0005) c.retired = true;
+        if (rr() < 0.002) c.pitState = c.pitState === "none" ? "lane" : "none";
+        if (t > 1100 && rr() < 0.02) { c.finished = true; c.finishT = t + rr(); }
+      }
+      const ev = w.tick(p, field, level, 1 / 60);
+      const be = b.tick(p, field, { total: 400, vRef: 80, caution: level, race: true }, 1 / 60);
+      const row = JSON.stringify([w.info(), b.info()]);
+      if (ev || be || row !== last) { steps.push({ t, ev, be, info: w.info(), binfo: b.info() }); last = row; }
+    }
+    pass.push({ steps, final: field.map((c) => c.prog) });
+  }
+  const jumps = [];
+  for (let i = 0; i < 100; i++) {
+    const th = pick(r, [0, 0.1, 0.13, 1, NaN, "x"]), auto = r() < 0.2, t = pick(r, [-1, 0.1, 0.19, 0.2, 1]), v = pick(r, [0, 3, 3.3, 10]), vRef = pick(r, [0, 80]);
+    jumps.push({ th: typeof th === "number" && Number.isNaN(th) ? "NaN" : th, auto, t, v, vRef, early: S.jumpStartEarlyThrottle(th, auto), fast: S.jumpStartFastLaunch(t, v, vRef) });
+  }
+  write("sporting-regs", { comp, pass, jumps, pens: [0, 1, 2, 3, 4].map(S.passPenaltyS) });
+}
