@@ -3,8 +3,8 @@
 A rebuild of [f1-game](https://github.com/brycejmurrin/f1-game) as TypeScript 7 (strict,
 `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`) + Vite 8 + three.js 0.186.1
 (`three/webgpu`, WebGL2 fallback) + Vitest + Playwright, deployed to GitHub Pages.
-The plan is `docs/PLAN.md` and the stack decision `docs/adr/0001-stack.md`
-(branch `plan/rewrite-plan` until merged). This file holds the rules every session needs.
+The plan is `docs/PLAN.md`, the stack decision `docs/adr/0001-stack.md`, and the
+parallel lane map `docs/FLEET.md`. This file holds the rules every session needs.
 
 ## The loop
 
