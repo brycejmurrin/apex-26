@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import zlib from "node:zlib";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SPECIAL: Record<string, number> = { "-0": -0, NaN: NaN, Infinity: Infinity, "-Infinity": -Infinity };
@@ -19,7 +20,8 @@ export function decode(text: string): unknown {
 }
 
 export function readGolden<T>(name: string): T {
-  return decode(fs.readFileSync(path.join(HERE, name), "utf8")) as T;
+  const raw = fs.readFileSync(path.join(HERE, name));
+  return decode((name.endsWith(".gz") ? zlib.gunzipSync(raw) : raw).toString("utf8")) as T;
 }
 
 /**
