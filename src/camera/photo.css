@@ -13,7 +13,9 @@
    apex-26 code sets yet; TODO(lane-shell)), and the hud.css rules for
    elements other lanes own (#hud, #lights, #campicker, #game-metrics, …).
    `body:has(> …)` is `body:has(…)`: the mounts put their panel in the
-   caller's element, not necessarily directly in <body>. */
+   caller's element, not necessarily directly in <body>.
+   The PHOTO STUDIO sheet (src/camera/photo-studio.ts; f1-game
+   css/photo-studio.css) is the `@layer overlays` block at the end. */
 
 /* ---------- the dock while flying (tuner.css:83-92) ---------- */
 body.photo-mode:not(.pc-nopanel):has(#camtune:not([hidden])),
@@ -263,4 +265,102 @@ body.pc-uihidden #pc-restore { display: block; }
 }
 /* Hide the keyboard-shortcut hint where there is no keyboard at all. */
 @media (not (any-pointer: fine)), (max-width: 720px) { .pc-hint { display: none; } }
+}
+
+/* ---------- PHOTO STUDIO (src/camera/photo-studio.ts) ----------
+   Ported verbatim from f1-game css/photo-studio.css:1-94, in the same
+   `@layer overlays` it ships in there. */
+@layer overlays {
+#photo-studio { position: fixed; inset: 0; z-index: 45; background: transparent; pointer-events: none; padding: var(--safe-t) var(--safe-r) var(--safe-b) var(--safe-l); }
+/* Shared sheet chrome stays fixed; only the composition/library body scrolls.
+   Viewport lengths and hardware insets are expressed in the sheet's own zoom. */
+#ps-panel { --fit-at: 260px; position: absolute; right: calc(var(--safe-r) / var(--sheet-scale, var(--ui-scale))); top: calc(var(--safe-t) / var(--sheet-scale, var(--ui-scale))); width: min(340px, calc(42 * var(--vwz))); height: calc((100svh - var(--safe-t) - var(--safe-b)) / var(--sheet-scale, var(--ui-scale))); max-height: none; pointer-events: auto; }
+/* Sheet busy: DONE / CAPTURE take the main thread on software GL. Disable
+   immediately and veil the sheet (same --scrim / --red tokens as .dh-spinner). */
+#ps-panel[aria-busy="true"] { cursor: progress; }
+#ps-panel[aria-busy="true"]::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: color-mix(in oklab, var(--scrim) 45%, transparent);
+  pointer-events: none;
+}
+#ps-panel[aria-busy="true"] .sheet-foot .bigbtn { opacity: 0.55; }
+#ps-panel .sheet-head { flex-wrap: nowrap; }
+#ps-body { display: flex; flex-direction: column; gap: var(--gap); overscroll-behavior: contain; }
+#ps-body > section { display: flex; flex-direction: column; gap: calc(var(--gap) * .6); min-width: 0; }
+#ps-body .adv-sec { margin: 0; }
+#ps-panel .balanced-row { gap: calc(var(--gap) * .5); --balance-basis: 6rem; }
+#ps-shots { --balance-basis: 4rem; }
+#ps-panel button:not(.bigbtn):not([data-step]) { min-height: var(--tap-min); padding: calc(var(--gap) * .5) var(--gap); font-size: var(--fs-micro); }
+/* Base file-button rule BEFORE the pointer:coarse floor below: same specificity, so it must come first or it resets --tap-paint to --tap-min. */
+#ps-panel input[type="file"]::file-selector-button { min-height: var(--tap-min); margin-inline-end: calc(var(--gap) * .5); font-family: inherit; color: var(--text); background: var(--plate); border: 1px solid var(--plate-line); border-radius: var(--r-sm); }
+@media (pointer: coarse) {
+  #ps-panel button:not(.bigbtn):not([data-step]),
+  #ps-panel input[type="file"]::file-selector-button { min-height: var(--tap-paint); }
+  /* Setting-row ‹ › were excluded above so --chip-h kept painting ~43 on
+     portrait phones under --tap-paint (~52). Floor both axes: layout-audit
+     soft-flags either dimension under the house tap floor. Fine pointer
+     stays on --chip-h / --tap-min via the base set-row rules. */
+  #ps-panel button[data-step] { min-height: var(--tap-paint); min-width: var(--tap-paint); }
+}
+body[data-density="compact"] #ps-panel button:not(.bigbtn):not([data-step]),
+body[data-density="compact"] #ps-panel input[type="file"]::file-selector-button { min-height: var(--tap-paint); }
+body[data-density="compact"] #ps-panel button[data-step] {
+  min-height: var(--tap-paint); min-width: var(--tap-paint);
+}
+/* UI Fit r6: Photo Studio setting-row selects painted 114×43 on
+   ios-iphone-portrait (~390×844) — .set-row > div > select uses --chip-h,
+   which under sheet zoom lands ~43 and soft-flags 4 selects (#ps-subject,
+   #ps-aspect, #ps-grid-select, #ps-postcard). Floor min-height at
+   --tap-paint (52 painted on touch; --tap-min with a mouse) like #1530/#1740.
+   min-height only: landscape already met --tap and must not shrink. */
+#ps-panel :is(#ps-subject, #ps-aspect, #ps-grid-select, #ps-postcard, #ps-tod, #ps-weather) {
+  min-height: var(--tap-paint);
+}
+#ps-panel .tune-row { display: flex; flex-direction: column; gap: calc(var(--gap) * .5); }
+#ps-panel input[type="file"] { min-width: 0; max-width: 100%; min-height: var(--tap); padding: calc(var(--gap) * .5); font-family: var(--font-ui); font-size: var(--fs-2); color: var(--text); background: var(--surf-3); border: 1px solid var(--plate-line); border-radius: var(--r-sm); }
+#ps-panel :is(select, input, summary):focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+#ps-panel summary { min-height: var(--tap); padding-block: calc(var(--gap) * .5); cursor: pointer; font-weight: 700; font-size: var(--fs-micro); }
+#ps-context, #ps-help, #ps-message { margin: 0; font-size: var(--fs-micro); }
+#ps-message { color: var(--dim); }
+#ps-preview { width: 100%; object-fit: contain; border-radius: var(--r-md); }
+#ps-library > div { display: flex; gap: var(--gap); flex-wrap: wrap; margin-top: var(--gap); }
+#ps-library img { width: 100%; max-height: 160px; object-fit: contain; }
+#ps-guide { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 100%; height: 100%; border: thin solid var(--text); box-shadow: 0 0 0 100vmax color-mix(in oklab, var(--bg) 45%, transparent); pointer-events: none; }
+#photo-studio[data-aspect="wide"] #ps-guide { width: min(100vw, 177.778svh); height: min(100svh, 56.25vw); }
+#photo-studio[data-aspect="square"] #ps-guide { width: min(100vw, 100svh); height: min(100svh, 100vw); }
+#photo-studio[data-aspect="portrait"] #ps-guide { width: min(100vw, 80svh); height: min(100svh, 125vw); }
+#ps-grid { position: absolute; inset: 0; opacity: .65; }
+#photo-studio[data-grid="thirds"] #ps-grid { background: linear-gradient(to right, transparent 33.2%, var(--text) 33.2%, var(--text) 33.4%, transparent 33.4%, transparent 66.5%, var(--text) 66.5%, var(--text) 66.7%, transparent 66.7%), linear-gradient(to bottom, transparent 33.2%, var(--text) 33.2%, var(--text) 33.4%, transparent 33.4%, transparent 66.5%, var(--text) 66.5%, var(--text) 66.7%, transparent 66.7%); }
+#photo-studio[data-grid="centre"] #ps-grid { background: linear-gradient(to right, transparent 49.9%, var(--text) 49.9%, var(--text) 50.1%, transparent 50.1%), linear-gradient(to bottom, transparent 49.9%, var(--text) 49.9%, var(--text) 50.1%, transparent 50.1%); }
+body.photo-studio-open #pc-bar { display: none; }
+/* Studio owns composition guides; hidden FreeCam effects must not leak in. */
+body.photo-studio-open :is(#fc-comp-grid, #fc-dof) { display: none; }
+body.photo-studio-open { --ps-dock-px: calc(min(340px * var(--ui-scale), 42vw) + var(--safe-r)); --ps-touch-z: min(var(--ui-scale), 1); }
+/* Controls use their own fit cap: the two sticks and altitude column must fit
+   the scene strip even when a larger menu preference is requested. */
+@supports (zoom: calc(100vw / 1px)) {
+  body.photo-studio-open { --ps-touch-z: min(var(--ui-scale), max(.4, calc((100vw - var(--ps-dock-px) - var(--safe-l) - var(--gap)) / (236px + var(--steer) + 2 * var(--gap)))), max(.4, calc((100svh - var(--safe-t) - var(--safe-b)) / (2 * var(--steer) + var(--gap))))); }
+}
+body.photo-mode.photo-studio-open :is(.pc-stickwrap, .pc-altcol) { zoom: var(--ps-touch-z); bottom: calc(var(--safe-b) / var(--ps-touch-z)); }
+body.photo-mode.photo-studio-open .pc-move-wrap { left: calc(var(--safe-l) / var(--ps-touch-z)); }
+body.photo-mode.photo-studio-open .pc-altcol { left: auto; right: calc((var(--ps-dock-px) + var(--gap)) / var(--ps-touch-z)); flex-direction: column; }
+body.photo-mode.photo-studio-open .pc-altcol .pc-btn { width: var(--steer); height: var(--steer); }
+body.photo-mode.photo-studio-open .pc-look-wrap { left: auto; right: calc((var(--ps-dock-px) + var(--gap)) / var(--ps-touch-z) + var(--steer) + var(--gap)); }
+@media (max-width: 640px) {
+  #photo-studio { padding-top: 58svh; }
+  #ps-panel { top: auto; bottom: calc(var(--safe-b) / var(--sheet-scale, var(--ui-scale))); width: calc((100vw - var(--safe-l) - var(--safe-r)) / var(--sheet-scale, var(--ui-scale))); height: calc(42svh / var(--sheet-scale, var(--ui-scale))); }
+  body.photo-studio-open { --ps-touch-z: min(var(--ui-scale), 1); }
+  /* Put the full touch row above the bottom sheet, with room for both thumbs.
+     Cap touch chrome at 100% so the row also fits a larger menu preference. */
+  body.photo-mode.photo-studio-open :is(.pc-stickwrap, .pc-altcol) { zoom: var(--ps-touch-z); bottom: calc((42svh + var(--safe-b) + var(--gap)) / var(--ps-touch-z)); }
+  body.photo-mode.photo-studio-open .pc-move-wrap { left: calc(var(--safe-l) / var(--ps-touch-z)); }
+  body.photo-mode.photo-studio-open .pc-look-wrap { left: auto; right: calc(var(--safe-r) / var(--ps-touch-z)); }
+  body.photo-mode.photo-studio-open .pc-altcol { left: calc(50vw / var(--ps-touch-z) - 28px); right: auto; flex-direction: column; }
+  body.photo-mode.photo-studio-open .pc-altcol .pc-btn { width: max(56px, var(--tap-min)); height: max(56px, var(--tap-min)); }
+}
+@media (max-height: 500px) and (min-width: 641px) {
+  #ps-panel { width: calc(34 * var(--vwz)); }
+  body.photo-studio-open { --ps-dock-px: calc(34vw + var(--safe-r)); }
+}
 }
