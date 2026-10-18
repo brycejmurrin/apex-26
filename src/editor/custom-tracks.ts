@@ -552,7 +552,7 @@ export function createCustomTracks(store: EditorStore, deps: CustomTracksDeps = 
     const r = write(items);
     if (origin >= 0) dropRunsOnceDurable(r, opts!.replace!);
     if (sync() >= 0 && sel) reselect(sel === (opts && opts.replace) ? it.id : sel);
-    return { ok: true as const, id: it.id, replaced: origin >= 0 ? opts!.replace! : null, durable: !!(r && r.durable), reason: r && (r as WriteResult & { reason?: string }).reason };
+    return { ok: true as const, id: it.id, replaced: origin >= 0 ? opts!.replace! : null, durable: !!(r && r.durable), reason: r && r.reason };
   }
 
   /** custom-tracks.js:386 */
