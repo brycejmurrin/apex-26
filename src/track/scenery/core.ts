@@ -28,8 +28,8 @@ export interface GeomCore {
   swayMatAt(id: number, base: RVec3, up: RVec3, y0: number, y1: number): (x: number, y: number, z: number) => number;
   /** geom.js:58. */
   readonly ROUND_K: number;
-  /** geom.js:59. */
-  roundNormals(out: GeomBuffer, v0: number, base: RVec3, up: RVec3, k: number): void;
+  /** geom.js:59; `k` omitted = `ROUND_K` (geom.js:61). */
+  roundNormals(out: GeomBuffer, v0: number, base: RVec3, up: RVec3, k?: number): void;
   /** geom.js:360. */
   readonly MIN_SEP: number;
   /** geom.js:366. */
@@ -166,9 +166,20 @@ export interface SplineCore {
   };
 }
 
+/**
+ * A built surface profile (`track.surface`). f1-game js/track/core/surface.js:34-172
+ * (`profile` returns `p`); build-props.js:615-617 calls `heightAt(k, dist, side)`
+ * and hands `rails` to TrackModels.create (:638).
+ */
+export interface SurfaceProfile {
+  heightAt(k: number, lateralDistance: number, side?: number): number;
+  /** TODO(scenery models port): type the rail record models.js reads. */
+  readonly rails: unknown;
+}
+
 /** f1-game js/track/core/surface.js:180 (`TrackSurface`). */
 export interface SurfaceCore {
-  profile(def: SpaceDef, track: BuildTrack): unknown;
+  profile(def: SpaceDef, track: BuildTrack): SurfaceProfile;
   heightAt(surface: unknown, k: number, lateralDistance: number): number;
 }
 
@@ -176,6 +187,15 @@ export interface SurfaceCore {
 export interface ScalarCore {
   lerp(a: number, b: number, t: number): number;
   clamp(v: number, lo: number, hi: number): number;
+}
+
+/**
+ * f1-game js/track/tracks.js:775 (`Tracks`), the members scenery reads.
+ * nature.js:613/:1314/:1343 and structures.js:188 (`fence`) read the track shell.
+ */
+export interface TracksCore {
+  /** tracks.js:723: rendered-terrain height at world XZ, or null off the terrain mesh. */
+  terrainY(track: BuildTrack, x: number, z: number): number | null;
 }
 
 /** f1-game `Assets` (js/render/shared/assets.js): baked models by id. */
@@ -193,4 +213,10 @@ export interface SceneryCore {
   readonly scalar: ScalarCore;
   /** Absent in a build without the asset pack (bakedModel then returns false). */
   readonly assets: AssetsCore | null;
+  /**
+   * The track shell's terrain lookup. f1-game guards each use with
+   * `typeof Tracks !== "undefined"` (nature.js:613, :1314, :1343), so null
+   * takes the same fallback.
+   */
+  readonly tracks: TracksCore | null;
 }

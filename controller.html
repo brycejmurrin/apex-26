@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0c0c14">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Apex 26 — phone controller</title>
+<!--
+  PHONE AS CONTROLLER. Port of f1-game controller.html:1-514 (markup and CSS);
+  the page script is src/net/controller-page.ts and the behaviour is
+  src/net/phone-pad.ts (f1-game js/input/phone-pad.js). Open this page on a
+  phone (the game shows a QR code that lands here with the room code in the
+  fragment, #pad=CODE[&relay=URL]), tap CONNECT, and the phone's tilt steers
+  the game on the other screen. The page is drawn as a Formula 1 steering
+  wheel: the rim turns with the phone, the LCD shows the live dash the game
+  streams back, the left grip is the gears (UP over DN), the right grip the
+  pedals (BRAKE over GAS), and the wheel-face buttons are the in-race
+  controls a pad has. Out of a race (or paused) the wheel becomes a MENU PAD.
+
+  A second Vite entry (vite.config.ts build.rollupOptions.input.controller):
+  no renderer, no game, only the net stack. `controller.html?demo` paints a
+  sample dash without a link; `?demo=auto` with gears, throttle and aero on
+  AUTO; `?demo=menu` the menu pad; `&still` keeps the rim level.
+
+  Why this is not Bluetooth: a web page cannot advertise as a Bluetooth
+  peripheral or an HID gamepad, on any phone, in any browser.
+
+  apex-26 differences: f1-game linked css/tokens.css and css/components.css
+  and applied the player's saved THEME / MENU ACCENT / TEXT SIZE / CONTRAST
+  before first paint; apex-26 has no theme layer yet, so the dark-theme token
+  values this sheet reads are inlined below (f1-game css/tokens.css) with a
+  minimal .bigbtn (css/components.css:544-673). The zoom canceller that was an
+  inline script lives in controller-page.ts. No import map, no cache-busting
+  query strings, no script list: Vite bundles the entry.
+-->
+<style>
+  /* THE GAME'S TOKENS, dark theme (f1-game css/tokens.css:209-690). */
+  :root {
+    --red: #e10600; --carbon: #15151E; --bg: #0c0c14; --text: #f6f6f9; --dim: #9a9aa8; --steel: var(--dim);
+    --sat: env(safe-area-inset-top, 0px); --sal: env(safe-area-inset-left, 0px);
+    --sar: env(safe-area-inset-right, 0px); --sab: env(safe-area-inset-bottom, 0px);
+    --gap: 12px; --tap: 44px;
+    --fs-1: 14px; --fs-2: 15px; --fs-4: 17px; --fs-6: 21px; --fs-7: 22px;
+    --ls-1: 0.02em; --ls-2: 0.04em; --ls-3: 0.06em; --ls-4: 0.08em; --ls-5: 0.12em;
+    --r-md: 8px; --r-lg: 14px;
+    --font-ui: "Titillium Web", "Segoe UI", system-ui, -apple-system, Helvetica, Arial, sans-serif;
+    --font-hud: "Barlow Condensed", "Titillium Web", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --accent: var(--red);
+    --surf-1: color-mix(in oklab, #fff 4%, var(--bg));
+    --surf-3: color-mix(in oklab, #fff 11%, var(--bg));
+    --plate-line: rgba(255, 255, 255, 0.16);
+    --card-line: rgba(255, 255, 255, 0.12);
+    --plate-hover: color-mix(in oklab, var(--carbon) 78%, #fff 8%);
+    --plate-press: color-mix(in oklab, var(--carbon) 84%, #fff 12%);
+    --plate-opaque: color-mix(in oklab, var(--carbon) 74%, transparent);
+    --scrim: rgba(6, 6, 10, 0.42);
+    --edge: inset 0 1px 0 rgba(255, 255, 255, 0.08), inset 0 -1px 0 rgba(0, 0, 0, 0.45);
+    --red-fill: color-mix(in oklab, var(--red) 90%, #1a0008);
+    --grad-primary: linear-gradient(135deg in oklab, color-mix(in oklab, var(--red-fill) 76%, #fff) 0%, color-mix(in oklab, var(--red-fill) 74%, #000) 100%);
+    --grad-primary-hot: linear-gradient(135deg in oklab, color-mix(in oklab, var(--red-fill) 58%, #fff) 0%, color-mix(in oklab, var(--red-fill) 84%, #000) 100%);
+  }
+  /* The primary / secondary button pair (f1-game css/components.css:544-673, trimmed). */
+  .bigbtn { display: block; min-height: var(--tap); margin: 10px auto; padding: 14px 18px 14px 22px;
+            font: 700 var(--fs-6) var(--font-ui); letter-spacing: var(--ls-2); color: var(--text);
+            background: var(--grad-primary); border: none; border-radius: var(--r-md); transform: skewX(-6deg);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.30), inset 0 -1px 0 rgba(0,0,0,.32), 0 2px 4px rgba(0,0,0,.45),
+                        0 6px 22px color-mix(in oklab, var(--red) 46%, transparent);
+            transition: background .14s, box-shadow .14s, transform .1s; touch-action: manipulation; }
+  .bigbtn:active { background: var(--grad-primary-hot); transform: skewX(-6deg) scale(.97); }
+  .bigbtn.alt { background: var(--plate-opaque); color: var(--text); border: 1px solid color-mix(in oklab, var(--steel) 42%, transparent);
+                font-weight: 600; letter-spacing: var(--ls-1); box-shadow: none; }
+  .bigbtn.alt:active { background: var(--plate-press); }
+  .bigbtn:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+
+  /* f1-game controller.html:87-303 from here, unchanged. */
+  :root { --fg: var(--text); --line: var(--plate-line); --team-c: var(--team, var(--accent));
+          --warn: #f6d200; --bad: #ff4d4d; --ok: #5ef08a; --blue: #4c8dff;
+          --weave: repeating-linear-gradient(45deg, var(--carbon) 0 2px, color-mix(in oklab, var(--carbon) 78%, #000) 2px 4px); }
+  :root[data-menu-accent="team"] { --red: var(--team, #e10600); }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
+  html, body { height: 100%; margin: 0; overflow: hidden; background: var(--bg); color: var(--text);
+         font: var(--fs-2)/1.4 var(--font-ui);
+         touch-action: none; user-select: none; -webkit-user-select: none; overscroll-behavior: none; }
+  body { background: radial-gradient(120% 80% at 50% -20%, color-mix(in oklab, var(--red) 16%, transparent), transparent 60%), var(--bg); }
+  /* :not(.bigbtn): this sheet is unlayered, so a plain `button` rule here
+     would beat the game's .bigbtn layer and turn CONNECT into a plate. */
+  button:not(.bigbtn) { font: inherit; color: var(--text); background: var(--plate-opaque); border: 1px solid var(--plate-line);
+           border-radius: var(--r-md); padding: 10px 14px; touch-action: none; box-shadow: var(--edge); }
+  button:disabled { opacity: .55; }
+  /* PAIRING SCREEN — portrait or landscape, a short column, dressed like a
+     menu sheet: the italic heading, dim body copy, the primary red CONNECT
+     and a plate SCAN (.bigbtn / .bigbtn.alt from css/components.css). */
+  #pair { position: absolute; inset: 0; display: flex; flex-direction: column; gap: var(--gap);
+          justify-content: center; align-items: center; padding: calc(16px + var(--sat)) 20px calc(16px + var(--sab)); text-align: center; }
+  #pair h1 { margin: 0; font-size: var(--fs-7, 22px); letter-spacing: var(--ls-2); }
+  #pair h1 span { color: var(--red); }
+  #pair p { margin: 0; color: var(--dim); max-width: 34ch; font-size: var(--fs-2); }
+  #pair .bigbtn { margin: 0; width: min(78vw, 300px); }
+  #code { font: 600 30px/1 var(--font-hud); letter-spacing: .3em; text-transform: uppercase;
+          text-align: center; width: min(78vw, 300px); background: var(--surf-1); color: var(--text); border: 1px solid var(--plate-line);
+          border-radius: var(--r-md); padding: 12px 0 12px .3em; box-shadow: inset 0 2px 6px rgba(0,0,0,.35); }
+  #code[maxlength="32"] { font-size: clamp(12px, 3vw, 16px); letter-spacing: .02em; width: min(88vw, 520px); padding-left: 0; }
+  #code:focus { outline: 2px solid var(--red); outline-offset: 2px; }
+  #scan[hidden], #scan-box[hidden] { display: none; }
+  #scan-box { position: relative; width: min(72vw, 46vh); aspect-ratio: 1; border-radius: var(--r-lg); overflow: hidden; background: #000; border: 1px solid var(--plate-line); }
+  #scan-box video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  #scan-box i { position: absolute; inset: 16%; border: 3px solid var(--red); border-radius: var(--r-md); box-shadow: 0 0 0 999px var(--scrim); }
+  #pair-or { display: none; font-size: var(--fs-1); letter-spacing: var(--ls-5); text-transform: uppercase; color: var(--dim); }
+  #scan:not([hidden]) ~ #pair-or { display: block; }
+  #status { min-height: 2.8em; color: var(--dim); font-size: var(--fs-2); }
+  #status.bad { color: var(--text); font-weight: 600; }
+  #status.bad::before { content: ""; display: inline-block; width: .55em; height: .55em; margin-right: .5em; border-radius: 50%; background: var(--red); vertical-align: .08em; }
+  body.linked #pair { display: none; }
+
+  /* THE WHEEL — only once linked. Landscape: left grip | face | right grip.
+     The rim (an SVG outline) sits behind everything and rotates with the
+     phone's roll; the controls stay put under the thumbs. */
+  #ctl { position: absolute; inset: 0; display: none; perspective: 900px;
+         padding: calc(6px + var(--sat)) calc(6px + var(--sar)) calc(6px + var(--sab)) calc(6px + var(--sal));
+         grid-template-columns: minmax(84px, 1fr) minmax(200px, 2.4fr) minmax(84px, 1fr); grid-template-rows: minmax(0, 1fr) auto; gap: 8px; }
+  body.linked #ctl { display: grid; }
+  #phone-input-options { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 12px; font-size: 11px; text-align: center; }
+  #phone-input-options label { display: flex; align-items: center; gap: 6px; }
+  #steering-mode { min-height: 32px; color: var(--text); background: var(--plate-opaque); border: 1px solid var(--plate-line); border-radius: 4px; }
+  #input-age { color: var(--dim); font-variant-numeric: tabular-nums; }
+  #steering-strip { flex-basis: 100%; height: 44px; line-height: 42px; border: 1px solid var(--team-c); border-radius: 8px; background: var(--plate-opaque); }
+  #steering-strip:focus-visible { outline: 2px solid var(--team-c); outline-offset: 1px; }
+  /* The rim sits BEHIND opaque controls and shows only in the gaps, so its
+     turn reads as the wheel moving, never as the face bending. */
+  #rim { position: absolute; left: 50%; top: 50%; width: min(96vw, 190vh); height: auto; aspect-ratio: 2 / 1;
+         transform-origin: center; translate: -50% -50%; pointer-events: none; opacity: .7;
+         transition: transform 60ms linear; }
+  #rim svg { width: 100%; height: 100%; display: block; overflow: visible; }
+  #rim .body { fill: url(#carbon); stroke: var(--plate-line); stroke-width: 3; }
+  #rim .grip { fill: var(--plate-opaque); stroke: var(--plate-line); stroke-width: 3; }
+  #rim .accent { fill: none; stroke: var(--team-c); stroke-width: 4; opacity: .8; }
+  .grip { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  /* The left grip: UP over DN, each half the column — the game's shift dock. */
+  .shift, .tap { flex: 1 1 0; min-height: 48px; border-radius: 22px; background: var(--plate-opaque);
+            border: 2px solid var(--plate-line); font-weight: 800; font-size: 26px; line-height: 1; color: var(--text);
+            display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; }
+  .shift small { font-size: 12px; letter-spacing: .14em; color: var(--dim); }
+  .tap { font-size: 16px; letter-spacing: .1em; display: none; }
+  .shift.on, .tap.on { color: var(--fg); border-color: var(--team-c); box-shadow: inset 0 0 0 2px var(--team-c); }
+  .pedal { flex: 1 1 0; border-radius: 26px; border: 2px solid var(--plate-line); background: var(--weave);
+           font-weight: 800; font-size: 18px; letter-spacing: .1em; display: flex; align-items: flex-end; justify-content: center;
+           padding-bottom: 22px; color: var(--dim); position: relative; overflow: hidden; }
+  .pedal::before { content: ""; position: absolute; inset: 14px; border-radius: 18px; border: 1px dashed var(--card-line); }
+  .pedal::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 0; transition: height 80ms; }
+  .pedal.on { color: var(--fg); }
+  /* --travel: the pedal's live level (phone-pad.js hold): full on the touch, easing as the thumb slides up. */
+  #gas.on { border-color: var(--ok); }   #gas.on::after { height: calc(var(--travel, 1) * 100%); background: rgba(94,240,138,.16); }
+  #brake.on { border-color: var(--bad); } #brake.on::after { height: calc(var(--travel, 1) * 100%); background: rgba(255,77,77,.16); }
+  /* CONTROL MODES from the dash (PhonePad.paintHud → body classes): what the
+     game drives itself the wheel does not offer. Gears AUTO: no paddles, the
+     pedal takes the whole grip. Throttle AUTO: the GAS zone is an inert plate
+     that says so. Aero AUTO or a circuit with no zones: AERO is greyed, not
+     removed, so the button grid keeps its shape under the thumb. */
+  .pedal small { display: none; font-size: 11px; letter-spacing: .14em; color: var(--dim); margin-top: 4px; }
+  body.gears-auto .shift { display: none; }
+  body.gears-auto .tap { display: flex; }
+  body.gears-auto #keys #b-overtake, body.gears-auto #keys #b-boost { display: none; }   /* on the grip instead */
+  body.throttle-auto #gas { pointer-events: none; flex-direction: column; background: var(--surf-1); color: color-mix(in oklab, var(--dim) 55%, transparent); border-color: var(--card-line); }
+  body.throttle-auto #gas::before { border-color: var(--card-line); }
+  body.throttle-auto #gas small { display: block; color: color-mix(in oklab, var(--dim) 55%, transparent); }
+  body.aero-auto #b-aero, body.aero-none #b-aero { pointer-events: none; background: var(--surf-1); color: color-mix(in oklab, var(--dim) 55%, transparent); border-color: var(--card-line); }
+  /* THE MENU PAD (PhonePad.paintHud → body.menu: out of a race, or paused) is
+     A CONTROLLER, NOT A WHEEL: the wheel hides and #menupad takes the screen —
+     a D-pad under the left thumb, BACK and SELECT under the right, the title
+     and PAUSE (RESUME on the pause menu) between them. Same events, same
+     desktop seam; only the shape changes, so nothing race-like is under a
+     thumb in a menu. */
+  #menupad { position: absolute; inset: 0; display: none; z-index: 1;
+             padding: calc(10px + var(--sat)) calc(14px + var(--sar)) calc(10px + var(--sab)) calc(14px + var(--sal));
+             grid-template-columns: 1fr minmax(150px, .9fr) 1fr; align-items: center; justify-items: center; gap: 12px;
+             background: radial-gradient(110% 80% at 50% -15%, color-mix(in oklab, var(--red) 18%, transparent), transparent 60%), var(--bg); }
+  body.linked.menu #menupad { display: grid; }
+  body.menu #ctl { display: none; }
+  /* The disc: a carbon bowl in the game's plate colours with a painted
+     chevron at each edge. Sized on the phone's height (a landscape phone is
+     ~360-430px tall) so a thumb reaches every edge without a stretch. The
+     live direction lights in the menu accent (--red), like a selected row. */
+  #dpad { position: relative; width: min(100%, 78vh); aspect-ratio: 1; border-radius: 50%;
+          background: radial-gradient(circle at 50% 40%, var(--surf-3), var(--surf-1) 62%, color-mix(in oklab, var(--bg) 80%, #000) 100%);
+          border: 1px solid var(--plate-line); box-shadow: var(--edge), inset 0 6px 18px rgba(0,0,0,.45), 0 10px 30px rgba(0,0,0,.35); }
+  #dpad::before { content: ""; position: absolute; inset: 9%; border-radius: 50%; pointer-events: none; opacity: .6;
+                  background: conic-gradient(from 45deg, transparent 0 1deg, var(--plate-line) 1deg 2deg, transparent 2deg 91deg, var(--plate-line) 91deg 92deg,
+                    transparent 92deg 181deg, var(--plate-line) 181deg 182deg, transparent 182deg 271deg, var(--plate-line) 271deg 272deg, transparent 272deg); }
+  #dpad.on { border-color: color-mix(in oklab, var(--red) 60%, var(--plate-line)); }
+  #dpad .arr { position: absolute; z-index: 1; width: 22%; aspect-ratio: 1; left: 39%; top: 39%; pointer-events: none;
+               background: var(--dim); transition: background 80ms, filter 80ms;
+               clip-path: polygon(50% 18%, 86% 70%, 14% 70%); }
+  #b-navUp { translate: 0 -150%; }
+  #b-navDown { translate: 0 150%; rotate: 180deg; }
+  #b-navLeft { translate: -150% 0; rotate: -90deg; }
+  #b-navRight { translate: 150% 0; rotate: 90deg; }
+  #dpad .arr.on { background: var(--red); filter: drop-shadow(0 0 8px color-mix(in oklab, var(--red) 70%, transparent)); }
+  /* The nub: a knurled cap in the plate colours that follows the thumb
+     (inline transform from menuStick) and springs home on release. */
+  #dpad-hub { position: absolute; left: 50%; top: 50%; width: 40%; aspect-ratio: 1; translate: -50% -50%; border-radius: 50%;
+              background: color-mix(in oklab, var(--bg) 70%, #000); box-shadow: inset 0 3px 10px rgba(0,0,0,.6); pointer-events: none; }
+  #dpad-nub { position: absolute; inset: 6%; border-radius: 50%; transition: transform 140ms cubic-bezier(.3,1.6,.5,1);
+              background: repeating-radial-gradient(circle at 50% 50%, transparent 0 5px, color-mix(in oklab, var(--text) 5%, transparent) 5px 6px),
+                          radial-gradient(circle at 40% 30%, var(--plate-hover), var(--plate-opaque) 70%), var(--surf-3);
+              border: 1px solid var(--plate-line); box-shadow: var(--edge), 0 6px 14px rgba(0,0,0,.45); }
+  #dpad.on #dpad-nub { transition: none; border-color: var(--red); box-shadow: 0 0 0 3px color-mix(in oklab, var(--red) 30%, transparent), 0 6px 14px rgba(0,0,0,.45); }
+  #mp-mid { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: clamp(6px, 2.4vh, 14px); text-align: center; min-width: 0; width: 100%; }
+  #mp-brand { font: italic 800 var(--fs-1)/1 "Saira Wordmark", var(--font-ui); letter-spacing: var(--ls-5); color: var(--dim); }
+  #mp-title { font-size: clamp(24px, 8vh, 40px); font-weight: 800; font-style: italic; letter-spacing: var(--ls-2); color: var(--text); line-height: 1;
+              padding-bottom: 6px; border-bottom: 3px solid var(--red); }
+  #mp-sub { font-size: var(--fs-1); letter-spacing: var(--ls-4); text-transform: uppercase; color: var(--dim); }
+  #b-pause-menu { width: 100%; min-height: clamp(44px, 13vh, 64px); padding: 0 14px; font-weight: 700; font-size: clamp(12px, 3.2vh, var(--fs-4));
+                  letter-spacing: var(--ls-3); border-radius: var(--r-md); background: var(--plate-opaque); border: 1px solid var(--plate-line); color: var(--text);
+                  display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: var(--edge); }
+  #b-pause-menu svg { width: 1.2em; height: 1.2em; fill: currentColor; }
+  #b-pause-menu.on { background: var(--plate-press); border-color: var(--red); }
+  /* A over B, on the diagonal a thumb sweeps. SELECT is the game's primary:
+     the red gradient every confirm wears. BACK is a plate, smaller and up and
+     in, so it is not hit by mistake — the same two-weight pair as a menu's
+     primary and secondary buttons. */
+  #ab { position: relative; width: min(100%, 78vh); aspect-ratio: 1; }
+  #ab button { position: absolute; padding: 0; min-height: 0; border-radius: 50%; display: flex; flex-direction: column;
+               align-items: center; justify-content: center; gap: 2px; color: var(--text); transition: transform 60ms, background 80ms; }
+  #ab b { font-size: clamp(22px, 9vh, 44px); font-weight: 800; font-style: italic; line-height: 1; }
+  #ab small { font-size: clamp(10px, 2.4vh, var(--fs-1)); font-weight: 700; letter-spacing: var(--ls-4); }
+  #b-navSelect { width: 58%; aspect-ratio: 1; right: 0; bottom: 4%; border: none; background: var(--grad-primary);
+                 box-shadow: inset 0 1px 0 rgba(255,255,255,.3), inset 0 -1px 0 rgba(0,0,0,.32), 0 2px 4px rgba(0,0,0,.45), 0 6px 22px color-mix(in oklab, var(--red) 46%, transparent); }
+  #b-navSelect small { color: var(--text); opacity: .85; }
+  #b-navBack { width: 42%; aspect-ratio: 1; left: 2%; top: 4%; background: var(--plate-opaque); border: 1px solid var(--plate-line); box-shadow: var(--edge), 0 6px 16px rgba(0,0,0,.35); }
+  #b-navBack small { color: var(--dim); }
+  #ab button.on { transform: scale(.94); }
+  #b-navSelect.on { background: var(--grad-primary-hot); }
+  #b-navBack.on { background: var(--plate-press); }
+
+  /* THE FACE: rev lights, the LCD, the button clusters. */
+  #face { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 0; }
+  #leds { display: grid; grid-template-columns: repeat(15, 1fr); gap: 3px; padding: 0 6%; }
+  #leds span { height: 12px; border-radius: 3px; background: var(--surf-1); border: 1px solid var(--card-line); }
+  #leds span:nth-child(-n+5).on { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  #leds span:nth-child(n+6):nth-child(-n+10).on { background: var(--bad); box-shadow: 0 0 8px var(--bad); }
+  #leds span:nth-child(n+11).on { background: var(--blue); box-shadow: 0 0 8px var(--blue); }
+  #screen.redline ~ #leds span, #screen.redline + #leds span { animation: strobe .12s steps(2) infinite; }
+  @keyframes strobe { to { opacity: .25; } }
+  #screen { flex: 1 1 0; min-height: 0; border-radius: 12px; border: 3px solid var(--card-line); background: #05060a;
+            box-shadow: inset 0 0 24px rgba(0,0,0,.9), 0 0 0 1px #000; padding: 6px 10px;
+            display: grid; grid-template-rows: auto 1fr auto auto; gap: 2px; overflow: hidden;
+            font-family: var(--font-hud); }
+  #screen .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+  #screen .top span { font-size: 13px; font-weight: 700; letter-spacing: .08em; color: var(--team-c); white-space: nowrap; }
+  #h-flag { color: var(--dim); }
+  #screen.caution #h-flag { color: var(--warn); background: rgba(246,210,0,.14); padding: 0 6px; border-radius: 4px; animation: strobe .5s steps(2) infinite; }
+  #screen .mid { justify-content: center; gap: 6%; }
+  #h-gear { font-size: clamp(48px, 22vh, 120px); line-height: .9; font-weight: 800; color: #fff; min-width: 1ch; text-align: center;
+            text-shadow: 0 0 18px rgba(255,255,255,.25); }
+  #screen.redline #h-gear { color: var(--bad); }
+  .spd { display: flex; flex-direction: column; align-items: flex-end; line-height: 1; }
+  #h-speed { font-size: clamp(28px, 11vh, 60px); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .spd small { font-size: 11px; letter-spacing: .14em; color: var(--dim); }
+  #screen .bot span { font-size: 12px; font-weight: 700; letter-spacing: .08em; color: var(--dim); white-space: nowrap; }
+  #screen.ot-ready #h-ot { color: var(--ok); }  #screen.ot-on #h-ot { color: #fff; background: var(--ok); padding: 0 6px; border-radius: 4px; }
+  #screen.x-open #h-aero { color: var(--blue); }
+  #ers { flex: 1 1 0; height: 10px; border-radius: 5px; background: var(--surf-1); border: 1px solid var(--card-line); overflow: hidden; }
+  #h-ers { height: 100%; width: 0; background: linear-gradient(90deg, var(--warn), #ffb347); transition: width 120ms linear; }
+  #screen.boost #h-ers { background: linear-gradient(90deg, #ff6a00, var(--warn)); animation: strobe .3s steps(2) infinite; }
+  #screen .last { justify-content: center; font-size: 12px; color: var(--dim); letter-spacing: .06em; min-height: 1.2em; }
+  #screen.idle #h-gear, #screen.idle #h-speed { color: #4a4a58; text-shadow: none; }
+  /* THE KEYS ARE THUMB-SIZED, the screen takes what is left. They sat at 40px
+     under a screen that ate the face; on a phone that was a strip of slivers
+     under two thumbs' worth of gear digit. Sized on the viewport height so a
+     taller phone gets taller keys, never smaller than a 48px tap target. */
+  #keys { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  #keys button { padding: 0; min-height: clamp(48px, 14vh, 80px); font-weight: 800; font-size: clamp(12px, 3.2vh, 18px); letter-spacing: .08em; border-radius: 14px;
+                 background: var(--plate-opaque); border: 1px solid var(--plate-line); color: var(--text); }
+  #keys button.on { border-color: var(--team-c); color: var(--team-c); }
+  #keys .wide { grid-column: 1 / -1; border-radius: 10px; min-height: clamp(36px, 9vh, 52px); font-size: clamp(11px, 2.6vh, 14px); color: var(--dim); }
+  #link { font-size: 10px; color: var(--dim); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: .08em; }
+  /* touch-action is NOT inherited: body's `none` does not reach the pedal
+     divs, and Safari decides double-tap zoom on the touched element. Every
+     part of the wheel owns its touches. */
+  #ctl, #ctl *, #menupad, #menupad * { touch-action: none; }
+  /* LANDSCAPE ONLY. The wheel is a landscape object — two thumbs on the
+     grips, the phone held like a rim — so portrait gets no squeezed layout,
+     it gets a card that says which way to turn. The tilt maths follows the
+     screen angle already, so the moment the phone turns the wheel is there. */
+  #rotate { display: none; position: absolute; inset: 0; z-index: 5; background: var(--bg); color: var(--fg);
+            flex-direction: column; justify-content: center; align-items: center; gap: 14px; text-align: center;
+            padding: 24px; font-weight: 700; letter-spacing: .06em; }
+  #rotate svg { width: 72px; height: 72px; color: var(--team-c); animation: turn 1.4s ease-in-out infinite alternate; }
+  #rotate small { display: block; font-weight: 400; color: var(--dim); letter-spacing: 0; margin-top: 4px; }
+  @keyframes turn { from { transform: rotate(0deg); } to { transform: rotate(90deg); } }
+  @media (prefers-reduced-motion: reduce) { #rotate svg { animation: none; transform: rotate(90deg); } }
+  @media (orientation: portrait) { body.linked #rotate { display: flex; } }
+</style>
+</head>
+<body>
+<section id="pair" class="grain">
+  <h1>APEX 26 <span>·</span> PHONE CONTROLLER</h1>
+  <p>Scan the QR code the game shows under Settings › CONTROLS › PHONE AS CONTROLLER, or type its room code and tap CONNECT. Hold the phone sideways like a wheel and tilt it to steer.</p>
+  <button id="scan" class="bigbtn alt" type="button">SCAN QR CODE</button>
+  <div id="scan-box" hidden><video id="scan-video" playsinline muted aria-label="Camera view for scanning the game's QR code"></video><i aria-hidden="true"></i></div>
+  <div id="pair-or" aria-hidden="true">or type the code</div>
+  <input id="code" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="8" aria-label="Room code" placeholder="ABC123">
+  <button id="connect" class="bigbtn" type="button">CONNECT</button>
+  <p id="status" role="status"></p>
+</section>
+<div id="rotate" role="status"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg>TURN THE PHONE SIDEWAYS<small>The wheel works in landscape only.</small></div>
+<section id="menupad" class="grain" aria-label="Menu pad">
+  <!-- ONE DISC, D-PAD AND STICK AT ONCE (PhonePad.pad → menuStick): tap an
+       edge for that arrow, or put a thumb anywhere on it and drag; a held
+       direction repeats. The arrows are painted, the disc takes the touches. -->
+  <div id="dpad" role="group" aria-label="Menu stick: tap an arrow or drag to move">
+    <span id="b-navUp" class="arr" aria-hidden="true"></span>
+    <span id="b-navRight" class="arr" aria-hidden="true"></span>
+    <span id="b-navDown" class="arr" aria-hidden="true"></span>
+    <span id="b-navLeft" class="arr" aria-hidden="true"></span>
+    <div id="dpad-hub" aria-hidden="true"><div id="dpad-nub"></div></div>
+  </div>
+  <div id="mp-mid">
+    <div id="mp-brand">APEX 26</div>
+    <div id="mp-title" role="status">MENU</div>
+    <div id="mp-sub">DRAG OR TAP TO MOVE</div>
+    <button id="b-pause-menu" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>PAUSE / RESUME</button>
+  </div>
+  <div id="ab">
+    <button id="b-navBack" type="button" aria-label="Back"><b aria-hidden="true">B</b><small>BACK</small></button>
+    <button id="b-navSelect" type="button" aria-label="Select"><b aria-hidden="true">A</b><small>SELECT</small></button>
+  </div>
+</section>
+<section id="ctl" aria-label="Steering wheel controller">
+
+  <div id="rim" aria-hidden="true">
+    <svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <pattern id="carbon" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <rect width="6" height="6" fill="#111118"/><rect width="3" height="6" fill="#171720"/>
+        </pattern>
+      </defs>
+      <!-- an F1 wheel: a wide body, two grips, a cut-out bottom -->
+      <path class="body" d="M62 40 Q60 12 90 12 L310 12 Q340 12 338 40 L332 92 Q330 118 300 122 L262 126 L238 158 Q200 172 162 158 L138 126 L100 122 Q70 118 68 92 Z"/>
+      <path class="grip" d="M18 70 Q10 70 10 82 L14 150 Q16 168 34 168 L62 168 Q80 168 80 150 L76 96 Q74 84 62 82 Z"/>
+      <path class="grip" d="M382 70 Q390 70 390 82 L386 150 Q384 168 366 168 L338 168 Q320 168 320 150 L324 96 Q326 84 338 82 Z"/>
+      <path class="accent" d="M92 22 L308 22"/>
+      <path class="accent" d="M200 150 L200 170"/>
+    </svg>
+  </div>
+  <!-- The game's own tilt docks (js/game.js layoutDocks): the LEFT thumb has
+       the gears (UP over DN) and, with gears on AUTO, the taps instead; the
+       RIGHT thumb has the pedals, BRAKE over GAS. -->
+  <div id="left" class="grip">
+    <button id="b-shiftUp" class="shift" type="button" aria-label="Shift up">&#9650;<small>UP</small></button>
+    <button id="b-shiftDown" class="shift" type="button" aria-label="Shift down">&#9660;<small>DN</small></button>
+    <button id="b-ot-big" class="tap" type="button" aria-label="Overtake">OT</button>
+    <button id="b-boost-big" class="tap" type="button" aria-label="Boost">BOOST</button>
+  </div>
+  <div id="face">
+    <div id="screen" aria-live="off">
+      <div class="row top"><span id="h-pos"></span><span id="h-lap"></span><span id="h-flag">PIT LANE</span></div>
+      <div class="row mid"><div id="h-gear">N</div><div class="spd"><span id="h-speed">---</span><small>KM/H</small></div></div>
+      <div class="row bot"><span id="h-ot">OT</span><div id="ers" aria-label="ERS"><div id="h-ers"></div></div><span id="h-aero">AERO</span></div>
+      <div id="h-last" class="row last"></div>
+    </div>
+    <div id="leds" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+    <div id="keys">
+      <button id="b-overtake" type="button">OT</button>
+      <button id="b-boost" type="button">BOOST</button>
+      <button id="b-aero" type="button">AERO</button>
+      <button id="b-camera" type="button">CAM</button>
+      <button id="b-radio" type="button">RADIO</button>
+      <button id="b-look" type="button">LOOK</button>
+      <button id="b-recover" type="button">RESET</button>
+      <button id="b-pause" type="button">PAUSE</button>
+      <button id="b-center" type="button" class="wide">CENTRE TILT</button>
+    </div>
+    <div id="link" role="status"></div>
+  </div>
+  <div id="right" class="grip">
+    <div id="brake" class="pedal" role="button" tabindex="0" aria-label="Brake">BRAKE</div>
+    <div id="gas" class="pedal" role="button" tabindex="0" aria-label="Gas">GAS<small>AUTO</small></div>
+  </div>
+  <div id="phone-input-options">
+    <label>STEERING <select id="steering-mode" aria-label="Phone steering mode"><option value="tilt">TILT</option><option value="touch">TOUCH STRIP</option></select></label>
+    <div><span id="input-health" role="status" aria-live="polite">WAITING FOR INPUT ACK</span> <span id="input-age" aria-live="off"></span></div>
+    <div id="steering-strip" role="slider" tabindex="0" aria-label="Touch steering: drag left or right, release to center" aria-valuemin="-1" aria-valuemax="1" aria-valuenow="0" hidden>DRAG TO STEER · RELEASE TO CENTER</div>
+  </div>
+</section>
+<script type="module" src="/src/net/controller-page.ts"></script>
+</body>
+</html>
