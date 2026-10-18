@@ -569,3 +569,59 @@ write("caution-machine", [machineRun(5, false), machineRun(6, true), machineRun(
   }
   write("pit-lane", { cases, teams });
 }
+
+// ─── season calendar, format and save (modes) ─────────────────────────────
+{
+  const ids = ["bahrain", "monaco", "silverstone", "spa", "monza", "suzuka", "sepang", "catalunya", "imola", "estoril"];
+  const LIST = ids.map((id, i) => ({ id, gp: id.toUpperCase() + " GP", classic: i >= 8 || undefined }));
+  const scripts = [];
+  for (let k = 0; k < 16; k++) {
+    const saved = new Map(), rev = new Map();
+    // GameStore caches the written object itself (store.js write: `_cache.set(key, v)`), so a later
+    // in-place change to it is what the next get() sees. The stub keeps that aliasing.
+    const store = {
+      get: (key, d) => (saved.has(key) ? saved.get(key) : d),
+      set: (key, v) => { saved.set(key, v); rev.set(key, (rev.get(key) || 0) + 1); return true; },
+      write: (key, v) => { if (v === undefined) saved.delete(key); else saved.set(key, v); rev.set(key, (rev.get(key) || 0) + 1); return { ok: true, durable: true, reason: null }; },
+      keyRevision: (key) => "0:" + (rev.get(key) || 0),
+    };
+    const ctx = context({ GameStore: { store }, Tracks: { LIST, SEASON: LIST.filter((t) => !t.classic) }, Teams: { POINTS: [25, 18, 15, 12, 10, 8, 6, 4, 2, 1], LIST: [] } });
+    load(ctx, "js/career/save-migrate.js");
+    load(ctx, "js/career/season-cal.js");
+    const S = read(ctx, "SeasonCal"), r = rng(1600 + k);
+    const drivers = [];
+    for (let i = 0; i < 8; i++) drivers.push({ driverId: "abcd"[i % 4] + ":" + (i >> 2), code: "D" + i, team: { id: "abcd"[i % 4] } });
+    const ops = [];
+    let season = null;
+    const rec = (op, out) => ops.push({ op, out: out === undefined ? null : JSON.parse(JSON.stringify(out)), season: season ? JSON.parse(JSON.stringify(season)) : null });
+    for (let i = 0; i < 60; i++) {
+      const roll = r();
+      if (roll < 0.1) {
+        const cfg = { trackIds: shuffledPick(r, ids.concat(["ghost"])), quali: r() < 0.7, sprint: pick(r, [false, true, "rounds", "x"]), sprintIds: [ids[1], ids[3], "nope"], laps: pick(r, [3, 5, 7, 57]), points: pick(r, ["modern", "classic", "z"]), flPoint: r() < 0.5, drop: pick(r, [0, 2, 3, 4]) };
+        rec(["setConfig", cfg], S.setConfig(cfg));
+      } else if (roll < 0.15) { const f = pick(r, ["season", "season", "gp", "career"]); rec(["engage", f], S.engage(f)); }
+      else if (roll < 0.22) { season = S.restart(); rec(["restart"], null); }
+      else if (roll < 0.27) { const cfg = { trackIds: ids.slice(0, 3 + Math.floor(r() * 5)), sprint: pick(r, [false, "rounds"]), sprintIds: [ids[1]], laps: 5 }; const res = S.applyConfig(cfg); if (res.season) season = res.season; rec(["applyConfig", cfg], { ok: res.ok, reason: res.reason, has: !!res.season }); }
+      else if (roll < 0.55 && season) {
+        const order = drivers.slice().sort(() => r() - 0.5);
+        const fastest = pick(r, drivers).driverId, run = r() < 0.2 ? { laps: Math.floor(r() * 10), of: 10 } : null;
+        rec(["award", order.map((d) => d.driverId), fastest, run], S.award(season, order, fastest, run));
+      } else if (roll < 0.62) {
+        rec(["probe"], { rounds: S.rounds(), list: S.list().map((t) => t.id), stage: S.stage(season), sprintOn: S.sprintOn(season), mid: S.midWeekend(season), quali: S.quali(), label: S.qualiLabel(season), lapsFor: S.lapsFor(10, season), roundLaps: S.roundLaps(10, season, 7), table: S.pointsTable(), draw: S.drawRound(season), canRace: S.canRace(season), progress: S.hasProgress(season), gp: S.gpName(S.track(0)), cfg: S.config() });
+      } else if (roll < 0.7 && season) rec(["save"], S.save(season));
+      else if (roll < 0.76) { season = S.load(); rec(["load"], { lossy: S.lastLoadLossy() }); }
+      else if (roll < 0.8) {
+        const bad = { round: pick(r, [0, 2, 5, 99, -1, "x"]), pts: { "a:0": 5, "b:0": "7", "c:0": "x" }, teamPts: { a: 1e999 }, driverCodes: { "a:0": "ABCDEFGHIJKLMNOP", z: 3 }, finishes: { "a:0": [1, 0, 2.5] }, roundPts: { "a:0": [3, null, 7, 9] }, config: { trackIds: ["ghost", ids[0], ids[2], ids[0], ids[4]], sprint: "rounds", sprintIds: [ids[2]] }, seed: pick(r, [5, 0, -1, 2 ** 33]), lastFl: pick(r, [3, "a:0"]), sprintOrder: [1] };
+        store.write("season", bad);
+        season = S.load(); rec(["loadBad", bad], { lossy: S.lastLoadLossy() });
+      } else if (roll < 0.85 && season) rec(["luck", 77], S.luckSeed(season, 77));
+      else if (roll < 0.9) rec(["clear"], S.clear());
+      else if (roll < 0.95) { const p = pick(r, ["full", "real2026", "12", "8", "5", "classics", "3"]); rec(["preset", p], S.preset(p)); }
+      else rec(["shuffle", 42], S.shuffled(ids, 42));
+      if (season) ops[ops.length - 1].rank = drivers.map((d) => d.driverId).sort((a, b) => S.rank(season, a, b));
+    }
+    scripts.push({ ops, saved: JSON.parse(JSON.stringify(Object.fromEntries(saved))) });
+  }
+  function shuffledPick(r, a) { return a.filter(() => r() < 0.7); }
+  write("season-cal", { list: LIST, scripts });
+}
