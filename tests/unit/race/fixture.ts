@@ -59,3 +59,19 @@ export function clone<T>(o: T): T {
 export function cmp(v: unknown, encoded = false): unknown {
   return revive(encoded ? v : norm(v));
 }
+
+/** tools/race-fixtures/vm.cjs `rng` (mulberry32), for scenarios the test replays from the seed. */
+export function rng(seed: number): () => number {
+  let s = seed >>> 0;
+  return () => {
+    s = (s + 0x6D2B79F5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** gen.cjs `pick`. */
+export function pick<T>(r: () => number, a: readonly T[]): T {
+  return a[Math.floor(r() * a.length)] as T;
+}
