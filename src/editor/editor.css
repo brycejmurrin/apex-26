@@ -1,0 +1,802 @@
+/* Ported verbatim from f1-game css/editor.css (the #trackdesigner screen). */
+@layer overlays {
+/* Apex 26 — TRACK DESIGNER (#trackdesigner). All classes prefixed td-; the
+   chips, the close glyph and the red action buttons reuse the shared recipes
+   (.sel-chip / .dh-close / .sel-edit) so this sheet adds layout, not paint.
+   Tokens only: colours, spacing and type come from css/tokens.css (the
+   rawColor / rawSpacing / subFloorFontSize ratchets carry zero slack). */
+
+/* A real <dialog> (index.html) opened by TopModal mirroring `hidden`. Same two
+   load-bearing lines as #datahub / #track-detail: no boxes while closed (this
+   layer outranks the components-layer dialog.screen guard), and the scrim is
+   on the element so ::backdrop stays silent. */
+#trackdesigner:not([open]) { display: none; }
+#trackdesigner::backdrop { background: none; }
+#trackdesigner[open],
+:root[data-appearance-peek="designer"] #trackdesigner {
+  --td-zoom: calc(var(--ui-scale) * var(--look-designer-size, 1));   /* APPEARANCE › TRACK DESIGNER › DESIGNER SIZE rides on UI SIZE */
+  display: grid;
+  grid-template-rows: auto minmax(auto, 1fr) auto;
+  /* .screen centres its items (place-items: center): with that, the body is
+     content-sized (890px on a 412px-tall phone, measured 2026-10-01), overlaps
+     the head and the foot, and the rail never scrolls. Stretch fills the track. */
+  place-items: stretch;
+  margin: 0;
+  width: 100%; height: 100%;
+  background: var(--bg);
+  /* UI SIZE applies; the safe-area padding lives INSIDE the zoom, so it is
+     divided back out (the #track-detail precedent, measured 2026-08-21). */
+  zoom: var(--td-zoom);
+  padding:
+    calc(var(--safe-t) / var(--td-zoom))
+    calc(var(--safe-r) / var(--td-zoom))
+    calc(var(--safe-b) / var(--td-zoom))
+    calc(var(--safe-l) / var(--td-zoom));
+  box-sizing: border-box;
+  /* Size queries use the space left after UI SIZE and safe-area padding.
+     A constrained editor can grow its body and scroll the dialog instead of
+     clipping either canvas or putting the inspector underneath the footer. */
+  container: designer-shell / size;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+/* The canonical .sheet-head delivers the paint and the brand-red rail; the
+   dialog is a grid, so only the flex deltas the .sheet grid would supply. */
+#trackdesigner .sheet-head { flex: none; background: var(--bg); }
+
+.td-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, min(420px, 38%));
+  /* ONE definite row: an implicit auto row grows to the rail's content and the
+     rail's overflow-y never engages. 0 minimum so the row is the track, not
+     the content; overflow hidden so nothing paints over the foot. */
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--gap);
+  min-height: 0;
+  overflow: hidden;
+  padding: calc(var(--pad) * 0.4) var(--gap) 0;
+}
+.td-stage { grid-column: 1; grid-row: 2; position: relative; min-height: 0; display: flex; flex-direction: column; gap: calc(var(--gap) / 2); }
+.td-stage canvas {
+  flex: 1 1 auto; min-height: 72px; width: 100%;
+  touch-action: none;                 /* one finger drags or pans, two pinch — the page never scrolls under it */
+  background: var(--surf-1);
+  border: 1px solid var(--plate-line);
+  border-radius: var(--r-md);
+  outline: none;
+  cursor: default;
+}
+.td-stage canvas:focus-visible { box-shadow: 0 0 0 2px var(--focus); }
+/* The elevation strip (js/editor/profile.js) under the main canvas: a fixed
+   band tall enough for ≥44 px grips; the main canvas keeps the rest. */
+.td-stage > canvas[data-role="profile"] {
+  flex: none;
+  height: max(56px, calc(var(--chip-h) * 2.2));
+  min-height: 56px;
+  touch-action: none;
+}
+/* UNDO / REDO / FIT sit on the stage so they are not buried under DETAILS. */
+.td-stage > .td-chips[data-role="toolbar"] {
+  flex: none;
+  justify-content: flex-start;
+}
+.td-stats, .td-hint, .td-card-meta, .td-msg {
+  font-size: var(--fs-micro);
+  color: var(--dim);
+  letter-spacing: var(--ls-2);
+}
+.td-stats { display: flex; flex-wrap: wrap; gap: var(--gap); text-transform: uppercase; letter-spacing: var(--ls-3); font-variant-numeric: tabular-nums; }
+.td-rail {
+  grid-column: 2; grid-row: 1 / span 2;
+  container-type: inline-size;
+  align-self: stretch;
+  max-height: 100%;
+  box-sizing: border-box;
+  min-height: 0; min-width: 0;
+  overflow-x: hidden; overflow-y: auto; overscroll-behavior-y: contain;
+  overscroll-behavior-x: none;
+  touch-action: pan-y;
+  /* ScrollFade draws .sf-scroll::before; hide the native gutter so the orange
+     thumb is not stacked on a grey bar that eats the NEXT / name field lane
+     (1440×900, 1280×800 — #1893). */
+  scrollbar-gutter: stable;
+  scrollbar-width: none;
+  display: flex; flex-direction: column; gap: var(--gap);
+  padding-inline-end: var(--pad);
+}
+.td-rail::-webkit-scrollbar { display: none; }
+/* Equal-width tabs: flex-basis auto sized each chip to its label, so DESIGN /
+   MY CIRCUITS / HOW TO jumped width when the selected border changed. */
+.td-tabs { position: sticky; top: 0; z-index: 3; background: var(--bg); padding-block: calc(var(--gap) / 2); display: flex; flex-wrap: nowrap; gap: calc(var(--gap) / 2); }
+.td-chips[data-role="height-shift"] { display: grid; grid-template-columns: 1fr minmax(64px, 0.7fr) 1fr; }
+[data-role="height-shift"] .td-input { width: 100%; text-align: center; }
+.td-chips { display: flex; flex-wrap: wrap; gap: calc(var(--gap) / 2); min-width: 0; }
+.td-tab { flex: 1 1 0; min-width: 0; justify-content: center; text-align: center; padding-inline: calc(var(--gap) / 2); }
+.td-pane { display: flex; flex-direction: column; gap: var(--gap); min-width: 0; }
+.td-group { display: flex; flex-direction: column; gap: calc(var(--gap) / 2); }
+.td-label {
+  font-size: var(--label); font-weight: 700; font-style: italic;
+  letter-spacing: var(--ls-4); color: var(--steel); text-transform: uppercase;
+}
+/* label · − · value · + : the two keys are --tap-sm squares (paired micro-toggles) */
+.td-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max(var(--tap-sm), var(--tap-paint)) minmax(3em, 4em) max(var(--tap-sm), var(--tap-paint));
+  align-items: center;
+  gap: calc(var(--gap) / 2);
+  width: 100%; max-width: 100%; min-width: 0;
+  font-size: var(--fs-micro);
+  box-sizing: border-box;
+}
+/* Stepper ± keys: --tap-sm squares on desktop; on touch the house --tap floor
+   is 52px and layout-audit measured these at 52×39 (2026-10-07). */
+.td-row .sel-chip {
+  min-height: var(--tap-paint);
+  min-width: var(--tap-paint);
+  padding: 0;
+  justify-content: center;
+}
+.td-num { text-align: center; font-variant-numeric: tabular-nums; }
+.td-input {
+  min-height: var(--chip-h);
+  padding: 0 var(--gap);
+  font: inherit; font-size: var(--fs-2); text-transform: uppercase; letter-spacing: var(--ls-2);
+  color: var(--text);
+  background: var(--plate);
+  border: 1px solid var(--plate-line);
+  border-radius: var(--r-sm);
+}
+.td-input:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.td-issues { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: calc(var(--gap) / 3); font-size: var(--fs-micro); }
+.td-issue {
+  padding: calc(var(--gap) / 3) calc(var(--gap) / 2);
+  border-left: 3px solid var(--dim);
+  background: var(--plate);
+  border-radius: var(--r-xs);
+  cursor: pointer;
+  /* CHECKS rows are full-width taps on phone (layout-audit ~33px tall). */
+  min-height: var(--tap-paint);
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+}
+.td-issue[data-level="red"] { border-left-color: var(--slower); }
+.td-issue[data-level="amber"] { border-left-color: var(--sec-slow); }
+.td-issue[data-level="info"] { border-left-color: var(--edit-fill); }
+.td-issue[data-level="ok"] { border-left-color: var(--faster); }
+/* A row with a FIX chip: the message grows, the chip sits at the end. */
+.td-issue { display: flex; align-items: center; gap: calc(var(--gap) / 2); }
+.td-issue > .sel-chip { flex: none; margin-left: auto; }
+/* Rows that only explain (the coach card, HOW TO) are not pressable. */
+.td-group > .td-issue, .td-pane[data-pane="howto"] .td-issue { cursor: default; }
+.td-pane[data-pane="howto"] summary { cursor: pointer; line-height: 1.5; min-height: var(--tap-paint); padding-block: calc(var(--gap) / 2); box-sizing: border-box; }
+.td-pane[data-pane="howto"] ol { display: grid; gap: var(--gap); padding-left: calc(var(--gap) * 2); }
+.td-pane[data-pane="howto"] li.td-hint { line-height: 1.5; }
+/* The CHECKS label row: the label takes the line, FIX ALL sits at its end. */
+.td-chips > .td-label { flex: 1 1 auto; align-self: center; }
+/* The canvas's press-and-hold row (designer.js showCtx sets left/right and
+   top/bottom to the press, opening away from the nearer edges). */
+.td-ctx {
+  position: absolute;
+  z-index: 1;
+  padding: calc(var(--gap) / 2);
+  background: var(--plate);
+  border: 1px solid var(--plate-line);
+  border-radius: var(--r-md);
+}
+.td-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--gap); min-width: 0; }
+.td-grid[aria-busy="true"] { opacity: 0.5; }
+.td-card {
+  display: flex; flex-direction: column; gap: calc(var(--gap) / 2);
+  padding: calc(var(--gap) / 2);
+  background: var(--plate);
+  border: 1px solid var(--plate-line);
+  border-radius: var(--r-md);
+  min-width: 0;
+}
+.td-card > strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.td-card canvas { width: 100%; aspect-ratio: 16 / 11; background: var(--surf-1); border-radius: var(--r-sm); }
+/* Empty MY CIRCUITS lives inside .td-grid: without a full-row span it sat in
+   one auto-fill track (~150px) and read as a narrow column. */
+.td-empty {
+  grid-column: 1 / -1;
+  min-width: 0;
+  font-size: var(--fs-micro); color: var(--dim);
+  overflow-wrap: anywhere;
+}
+/* LOOK option rows reuse .td-row (a 4-col stepper grid) with a label + chips —
+   that overflowed the rail and spawned the horizontal scrollbar. */
+.td-row:has([data-look]) {
+  display: flex; flex-wrap: wrap;
+  grid-template-columns: none;
+  min-width: 0;
+}
+/* 3 LOOK: theme tiles — dual-colour swatch from TrackThemes.swatch, label under.
+   Bigger than the default 12px .sel-chip .swatch so picking a look is obvious.
+   Attribute selectors (no new class tokens) keep the cssClasses ratchet flat. */
+#trackdesigner .td-chips[data-role="themes"] {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: max-content;
+  align-content: start;
+  flex: none;
+  max-height: 17em;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  gap: calc(var(--gap) / 2);
+  min-width: 0;
+}
+#trackdesigner .td-chips[data-role="themes"] > .sel-chip {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: calc(var(--gap) / 4);
+  height: auto;
+  min-height: 0;
+  padding: calc(var(--gap) / 3);
+  white-space: normal;
+  text-align: left;
+}
+#trackdesigner .td-chips[data-role="themes"] .swatch {
+  display: block;
+  width: 100%;
+  height: calc(var(--chip-h) * 1.15);
+  min-height: 28px;
+  margin: 0;
+  border-radius: var(--r-xs);
+  border: 1px solid var(--plate-line);
+  flex: none;
+  box-sizing: border-box;
+}
+#trackdesigner .td-chips[data-role="themes"] > .sel-chip.active .swatch {
+  box-shadow: inset 0 0 0 2px var(--red);
+  border-color: var(--red);
+}
+#trackdesigner .td-chips[data-role="themes"] [data-role="theme-label"] {
+  display: block;
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: var(--ls-2);
+  line-height: 1.2;
+  overflow-wrap: normal;
+}
+#trackdesigner .td-hint[data-role="theme-blurb"] {
+  color: var(--text);
+  line-height: 1.35;
+  min-height: 2.7em;
+}
+@media (forced-colors: active) {
+  /* Colour IS the content on a theme swatch (same carve-out as .sel-chip .swatch
+     in tokens.css — restated here because the tile is larger and path-scoped). */
+  #trackdesigner .td-chips[data-role="themes"] .swatch { forced-color-adjust: none; }
+}
+/* Slice H: scenery props palette under 3 LOOK — kind chips + place/remove. */
+#trackdesigner .td-chips[data-role="props"],
+#trackdesigner .td-chips[data-role="prop-actions"] {
+  display: flex; flex-wrap: wrap;
+  gap: calc(var(--gap) / 2);
+  min-width: 0;
+}
+#trackdesigner .td-chips[data-role="props"] > .sel-chip {
+  font-variant-numeric: tabular-nums;
+}
+#trackdesigner .td-hint[data-role="props-hint"] {
+  line-height: 1.35;
+  min-height: 1.35em;
+}
+.td-foot {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: var(--gap);
+  padding: calc(var(--pad) * 0.4) var(--pad) calc(var(--pad) * 0.5);
+  border-top: 1px solid var(--plate-line);
+}
+.td-foot .sel-edit[disabled] { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
+.td-msg { flex: 1 1 12em; min-width: 0; }
+.td-msg[data-warn="1"] { color: var(--sec-slow); }
+
+.td-msg:empty { display: none; }
+
+/* Portrait or narrow: the rail drops under the canvas and scrolls on its own;
+   the foot becomes a 3-up grid (two rows of three, the message under them)
+   instead of a wrapping row that cost 172px on a 412px-wide phone. */
+@media (max-width: 760px), (orientation: portrait) {
+  /* Drop the 200px stage floor: it forced the canvas row past td-body and every
+     rail chip read as clipped (86 cells, layout-audit 2026-10-07). Both rows
+     need minmax(0,…) so the rail scrollport keeps a definite height. */
+  .td-body {
+    grid-template-columns: minmax(0, 1fr);
+    /* Bias height to the map row (minmax(0,1.15fr) starved the canvas to 2px, layout-audit 2026-10-07). */
+    grid-template-rows: auto minmax(0, 1fr) minmax(0, 1.2fr);
+  }
+  .td-stage {
+    overflow: hidden; min-height: 0; position: relative;
+    /* Map + profile rows only; UNDO/REDO/FIT float on the map (saves ~52px, layout-audit 2026-10-07). */
+    display: grid;
+    grid-template-rows: minmax(72px, 1fr) auto;
+    align-content: stretch;
+  }
+  .td-stage > canvas:not([data-role="profile"]) { grid-row: 1; min-height: 0; width: 100%; height: auto; align-self: stretch; flex: unset; }
+  .td-stage > canvas[data-role="profile"] { grid-row: 2; flex: unset; }
+  .td-stage > .td-chips[data-role="toolbar"] {
+    position: absolute; z-index: 2; left: 0; right: 0; top: calc(var(--gap) / 4);
+    grid-row: unset; flex: unset; margin: 0;
+    pointer-events: none;
+  }
+  .td-stage > .td-chips[data-role="toolbar"] .sel-chip { pointer-events: auto; }
+  .td-rail { grid-column: 1; grid-row: 3; min-height: 0; max-height: 100%; }
+  .td-stage .td-hint { display: none; }   /* the rail's copy under 1 SHAPE stays */
+  /* Stats duplicate the foot message on a narrow stack; hiding them buys canvas
+     without losing numbers (est lap still in CHECKS / foot status). */
+  .td-stats { display: none; }
+  .td-stage > canvas[data-role="profile"] {
+    height: max(44px, calc(var(--chip-h) * 1.35));
+    min-height: 44px;
+  }
+  .td-stage > .td-chips[data-role="toolbar"] .sel-chip {
+    font-family: var(--font-hud);
+    font-size: var(--fs-micro);
+    min-height: var(--tap-paint);
+    min-width: 0;
+    flex: 1 1 0;
+    padding-inline: calc(var(--gap) / 3);
+  }
+  /* Keep the history toolbar in its own row on portrait phones. Floating it
+     over the canvas hides the grid scale and reduces the usable map surface. */
+  #trackdesigner:not([data-mode="scenery"]) .td-stage {
+    grid-template-rows: minmax(72px, 1fr) auto auto;
+  }
+  #trackdesigner:not([data-mode="scenery"]) .td-stage > .td-chips[data-role="toolbar"] {
+    position: static;
+    grid-row: 2;
+    pointer-events: auto;
+  }
+  #trackdesigner:not([data-mode="scenery"]) .td-stage > canvas[data-role="profile"] {
+    grid-row: 3;
+  }
+  .td-foot { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: calc(var(--gap) / 2); }
+  .td-foot [data-role="file-actions"] { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .td-foot .sel-chip, .td-foot .sel-edit { padding-inline: calc(var(--gap) / 2); }
+  .td-foot .td-msg { grid-column: 1 / -1; }
+}
+/* Scenery is a map task: on phones use the profile space for the live view,
+   and place its toolbar above the map so every point remains reachable. */
+@media (max-width: 760px), (orientation: portrait) {
+  #trackdesigner:not([data-mode="scenery"]) [data-role="toolbar"] [data-map-view] { display: none; }
+  #trackdesigner[data-mode="scenery"] [data-role="toolbar"] { flex-wrap: wrap; }
+  #trackdesigner[data-mode="scenery"] [data-role="toolbar"] .sel-chip { flex-basis: 30%; }
+  #trackdesigner[data-mode="scenery"] .td-stage { grid-template-rows: auto minmax(72px, 1fr); }
+  #trackdesigner[data-mode="scenery"] .td-stage > .td-chips[data-role="toolbar"] { position: static; grid-row: 1; }
+  #trackdesigner[data-mode="scenery"] .td-stage > canvas:not([data-role="profile"]) { grid-row: 2; }
+  #trackdesigner[data-mode="scenery"] .td-stage > canvas[data-role="profile"] { display: none; }
+}
+/* On portrait screens the guide uses the map's space while it is open. */
+@media (orientation: portrait) {
+  #trackdesigner[data-pane="howto"] .td-stage { display: none; }
+  #trackdesigner[data-pane="howto"][data-mode] .td-body { grid-template-rows: auto minmax(0, 1fr); }
+  #trackdesigner[data-pane="howto"] .td-rail { grid-row: 2; }
+}
+/* Wide and tall enough for the stage hint: the rail's copy would repeat it. */
+@media (min-width: 761px) and (orientation: landscape) and (min-height: 501px) {
+  .td-rail > .td-pane[data-pane="design"] > .td-group > .td-hint:not([data-role]) { display: none; }
+}
+/* Wide + short (852×344 safari): 2-column body — trim profile so map+toolbar fit one column. */
+@media (min-width: 761px) and (max-height: 500px) {
+  .td-stage > canvas[data-role="profile"] {
+    height: max(40px, calc(var(--chip-h) * 1.25));
+    min-height: 40px;
+  }
+}
+/* Short (a phone in landscape, 412px tall measured 2026-10-01): the canvas is
+   the point of the screen, so the hint goes and the head and foot shrink. */
+@media (max-height: 500px) {
+  .td-stage .td-hint { display: none; }
+  .td-stage { gap: calc(var(--gap) / 4); }
+  /* Stats duplicate the foot on a short stack (incl. 852×344 safari 2-col); hiding buys map height. */
+  .td-stats { display: none; }
+  .td-stage {
+    position: relative;
+    display: grid;
+    grid-template-rows: minmax(72px, 1fr) auto;
+    align-content: stretch;
+  }
+  .td-stage > canvas:not([data-role="profile"]) { grid-row: 1; min-height: 0; width: 100%; height: auto; align-self: stretch; flex: unset; }
+  .td-stage > canvas[data-role="profile"] { grid-row: 2; flex: unset; }
+  .td-stage > .td-chips[data-role="toolbar"] {
+    position: absolute; z-index: 2; left: 0; right: 0; top: calc(var(--gap) / 4);
+    grid-row: unset; flex: unset; margin: 0;
+    pointer-events: none;
+  }
+  .td-stage > .td-chips[data-role="toolbar"] .sel-chip { pointer-events: auto; }
+  /* Keep the elevation strip on short phones (Bryce mobile pain); shrink, don't hide. */
+  .td-stage > canvas[data-role="profile"] {
+    display: block;
+    height: max(48px, calc(var(--chip-h) * 1.6));
+    min-height: 48px;
+  }
+  .td-foot { padding-top: calc(var(--pad) * 0.2); padding-bottom: calc(var(--pad) * 0.25); }
+}
+/* Elevation mode: give the strip more of the stage on phones. */
+#trackdesigner[data-mode="elevation"] .td-stage > canvas[data-role="profile"] {
+  height: max(72px, calc(var(--chip-h) * 2.8));
+  min-height: 72px;
+}
+/* Tall portrait phones need usable picking space on BOTH views. */
+@media (max-width: 760px) and (min-height: 740px) and (orientation: portrait) {
+  #trackdesigner[data-mode="elevation"] .td-body { grid-template-rows: auto minmax(0, 1.35fr) minmax(0, 1fr); }
+  #trackdesigner[data-mode="elevation"] .td-stage > canvas[data-role="profile"] { height: max(72px, calc(var(--chip-h) * 2.2)); }
+}
+/* Banking & kerbs group (elevation mode): keep chip rows from crowding. */
+#trackdesigner[data-mode="elevation"] .td-group[data-role="bank-kerbs"] .td-chips {
+  margin-top: calc(var(--gap) / 4);
+}
+/* Narrow + short LANDSCAPE only (734×343 measured 2026-10-05): the
+   portrait/narrow rule stacks the body with minmax(200px,1fr) AND turns the
+   foot into a 3-up grid. On a short landscape that foot eats ~200px, body is
+   left ~61px, the stage overflows into the head (~165px past td-body top) and
+   the rail collapses to 0 → ~140 clipped. Drop the stage floor so both rows
+   share the track, and put the foot back to one flex row (width is enough).
+   Do NOT restack wide short (852×344 safari): its 2-column body already fits
+   (0 clipped); stacking it regressed to 146. */
+@media (max-width: 760px) and (max-height: 500px) and (orientation: landscape) {
+  /* Side by side keeps the inspector usable when there is no height for a stack. */
+  .td-body { grid-template-columns: minmax(0, 1fr) minmax(240px, 38%); grid-template-rows: auto minmax(0, 1fr); }
+  .td-rail { grid-column: 2; grid-row: 1 / span 2; max-height: 100%; }
+  .td-foot { display: flex; flex-wrap: wrap; }
+  .td-stage > canvas:not([data-role="profile"]) { min-height: 72px; }
+  .td-stage > canvas[data-role="profile"] {
+    height: max(40px, calc(var(--chip-h) * 1.25));
+    min-height: 40px;
+  }
+}
+/* Mode navigation stays outside the inspector's scrollport. */
+#trackdesigner [data-role="mode-bar"] { grid-column: 1; grid-row: 1; min-width: 0; }
+#trackdesigner [data-role="mode-bar"] > .td-chips { flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; touch-action: pan-x; }
+#trackdesigner [data-role="mode-bar"] .sel-chip {
+  flex: 1 0 auto;
+  justify-content: center;
+  padding-inline: calc(var(--gap) / 6);
+  border-color: transparent;
+  border-radius: 0;
+  border-bottom: 2px solid var(--plate-line);
+  background: none;
+  font-size: var(--fs-micro);
+  font-family: var(--font-hud);
+  font-weight: 700;
+}
+#trackdesigner [data-role="mode-bar"] .sel-chip.active { border-bottom-color: var(--red); color: var(--text); }
+#trackdesigner [data-role="scenery"] { gap: var(--gap); }
+#trackdesigner [data-role="scenery"] > .td-label,
+#trackdesigner [data-role="atmosphere"] > .td-label,
+#trackdesigner [data-role="prop-inspector"] > .td-label {
+  font-family: var(--font-hud);
+  font-size: var(--fs-5);
+  color: var(--text);
+  font-style: normal;
+  padding-bottom: calc(var(--gap) / 2);
+  border-bottom: 1px solid var(--plate-line);
+}
+#trackdesigner [data-role="theme-summary"] { padding-bottom: calc(var(--gap) / 2); }
+#trackdesigner [data-role="theme-summary"] > .td-label { color: var(--text); font-style: normal; }
+#trackdesigner [data-role="theme-search"] { flex-wrap: nowrap; }
+#trackdesigner [data-role="theme-search"] > input { flex: 1; min-width: 0; }
+#trackdesigner [data-role="theme-filters"] { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+#trackdesigner [data-role="theme-filters"] .sel-chip { justify-content: center; }
+#trackdesigner [data-role="theme-results"] { min-height: 1.4em; }
+#trackdesigner [data-role="look-presets"] { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#trackdesigner [data-role="look-presets"] .sel-chip { justify-content: center; white-space: normal; text-align: center; }
+#trackdesigner .td-row:has([data-look]) { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+#trackdesigner .td-row:has([data-look]) > span { color: var(--dim); grid-column: 1 / -1; }
+#trackdesigner .td-row:has([data-look]) .sel-chip { min-width: 0; min-height: var(--chip-h); }
+#trackdesigner [data-role="prop-side"] { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: center; }
+#trackdesigner [data-role="prop-side"] > span { grid-column: 1 / -1; }
+#trackdesigner [data-role="prop-side"] .sel-chip { min-width: 0; width: 100%; justify-content: center; }
+#trackdesigner [data-role="placed-props"] .td-issue { cursor: default; }
+#trackdesigner [data-role="placed-props"] .td-issue > span { flex: 1; min-width: 0; }
+#trackdesigner [data-role="scenery"] .td-hint { display: block; line-height: 1.4; }
+#trackdesigner [data-role="themes"][hidden],
+#trackdesigner [data-role="themes"] > [hidden],
+#trackdesigner [data-role="scenery"] [hidden] { display: none; }
+#trackdesigner [data-role="scenery-sections"] { display: grid; grid-template-columns: 1fr 1fr 1fr; }
+#trackdesigner [data-role="scenery"] > .td-label,
+#trackdesigner [data-role="scenery"] [role="tabpanel"] > .td-label { display: none; }
+#trackdesigner [data-role="scenery-sections"] .sel-chip { min-width: 0; padding-inline: calc(var(--gap) / 3); font-family: var(--font-hud); justify-content: center; }
+#trackdesigner [data-role="scenery"] [role="tabpanel"] { margin-top: 0; }
+#trackdesigner .td-chips[data-role="props"] { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#trackdesigner [data-role="props"] .sel-chip { justify-content: space-between; }
+#trackdesigner [data-role="object-library"],
+#trackdesigner [data-role="object-placement"],
+#trackdesigner [data-role="object-list"] { margin-top: 0; padding-top: calc(var(--gap) / 2); }
+#trackdesigner [data-role="object-placement"],
+#trackdesigner [data-role="object-list"] { border-top: 1px solid var(--plate-line); }
+#trackdesigner [data-role="object-filters"] { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#trackdesigner [data-role="object-filters"] .sel-chip { min-width: 0; justify-content: center; padding-inline: calc(var(--gap) / 3); }
+#trackdesigner [data-role="object-library"] [data-role="props"] { max-height: calc(var(--chip-h) * 3 + var(--gap) * 2); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+#trackdesigner [data-role="selected-object"] { color: var(--text); }
+#trackdesigner [data-role="prop-gap"] { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; }
+#trackdesigner [data-role="prop-gap"] > button:last-child { grid-column: 1 / -1; }
+#trackdesigner [data-role="prop-gap"] .sel-chip { min-height: var(--chip-h); min-width: var(--chip-h); padding-inline: calc(var(--gap) / 3); }
+#trackdesigner [data-role="prop-gap"] > span { grid-column: 1 / -1; }
+#trackdesigner [data-role="range-actions"] { align-self: end; }
+#trackdesigner [data-role="range-actions"] .sel-chip { width: 100%; justify-content: center; }
+#trackdesigner [data-role="prop-gap"] .td-input { width: 100%; min-width: 0; box-sizing: border-box; text-align: center; }
+#trackdesigner [data-role="placement-mode"] { display: grid; grid-template-columns: 1fr 1fr; }
+#trackdesigner [data-role="scenery-fields"] { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: calc(var(--gap) / 2); }
+#trackdesigner [data-role="scenery-field"] { display: flex; flex-direction: column; gap: calc(var(--gap) / 3); min-width: 0; }
+#trackdesigner [data-role="scenery-field"] .td-input { width: 100%; min-width: 0; box-sizing: border-box; }
+#trackdesigner [data-role="prop-editor"] { padding: calc(var(--gap) / 2); border: 1px solid var(--plate-line); border-radius: var(--r-md); background: var(--surf-1); }
+#trackdesigner [data-role="placed-props"] .td-issue { display: grid; grid-template-columns: 1fr auto; }
+#trackdesigner [data-role="placed-props"] .td-issue > span { grid-column: 1 / -1; }
+@media (max-width: 760px) and (orientation: portrait) {
+  #trackdesigner [data-role="scenery"] [data-role="theme-blurb"] { display: none; }
+  #trackdesigner [data-role="theme-summary"] { padding-bottom: 0; }
+}
+
+#trackdesigner [data-role="selection"][hidden],
+#trackdesigner [data-role="selection"] [hidden] { display: none; }
+#trackdesigner [data-role="selection"] .td-hint { display: block; line-height: 1.4; }
+#trackdesigner [data-role="point-picker"] { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; }
+#trackdesigner [data-role="point-picker"] input,
+#trackdesigner [data-role="range-end"] input { width: 100%; min-width: 0; box-sizing: border-box; }
+#trackdesigner [data-role="range-end"] { display: grid; grid-template-columns: 1fr 1fr; align-items: center; }
+#trackdesigner .td-row input.td-num { min-width: 0; width: 100%; padding-inline: 0; box-sizing: border-box; }
+#trackdesigner [data-role="profile-view"] .td-chips { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+#trackdesigner [data-role="profile-view"] button { padding-inline: calc(var(--gap) / 3); }
+@media (min-width: 761px) and (min-height: 600px) {
+  #trackdesigner[data-mode="elevation"] .td-stage > canvas[data-role="profile"] { height: clamp(72px, 40%, calc(var(--chip-h) * 4.5)); }
+}
+
+@container (max-width: 320px) {
+  #trackdesigner .td-row:has([data-look]) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  #trackdesigner .td-row:has([data-look]) > span { grid-column: 1 / -1; }
+}
+
+/* Tall phones give the live scenery map room above the scrolling inspector. */
+@media (max-width: 760px) and (min-height: 740px) and (orientation: portrait) {
+  #trackdesigner[data-mode="scenery"] .td-body { grid-template-rows: auto minmax(0, 1.5fr) minmax(0, 1fr); }
+}
+
+/* UI Fit r6: Track Designer tool-strip labels clipped 36–57px on
+   phone portrait (390×844) and landscape (844×390) — survey r5 rank 4.
+   The phone carve used flex:1 1 0 + min-width:0 + equal padding-inline, so
+   FIT VIEW / LIVE SCENERY / HEIGHT squeezed under the shared -6deg skew and
+   the overflow:hidden stage. Wrap+balance the label, restore trailing pad,
+   and floor the tap at --tap (same wrap+balance recipe as #1537). */
+#trackdesigner .td-stage > .td-chips[data-role="toolbar"],
+#trackdesigner[data-mode="scenery"] .td-stage > .td-chips[data-role="toolbar"] {
+  flex-wrap: wrap;
+  align-items: stretch;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+#trackdesigner .td-stage > .td-chips[data-role="toolbar"] .sel-chip,
+#trackdesigner[data-mode="scenery"] .td-stage > .td-chips[data-role="toolbar"] .sel-chip {
+  white-space: normal;
+  text-wrap: balance;
+  overflow-wrap: break-word;
+  text-align: center;
+  line-height: 1.15;
+  overflow: visible;
+  text-overflow: clip;
+  box-sizing: border-box;
+  font-size: var(--fs-micro);
+  min-height: var(--tap);
+  min-width: var(--tap);
+  max-width: 100%;
+  flex: 1 1 4.5rem;
+  /* Leading-edge bias so the -6deg parallelogram does not slice the tail. */
+  padding-block: calc(var(--gap) / 3);
+  padding-inline: calc(var(--gap) * 0.7) calc(var(--gap) * 1.05);
+}
+@media (max-height: 500px) {
+  #trackdesigner .td-stage > .td-chips[data-role="toolbar"] .sel-chip,
+  #trackdesigner[data-mode="scenery"] .td-stage > .td-chips[data-role="toolbar"] .sel-chip {
+    flex-basis: 3.5rem;
+  }
+  #trackdesigner:not([data-mode="scenery"]) .td-stage > .td-chips[data-role="toolbar"] [data-map-view] {
+    display: none;
+  }
+}
+/* Short LANDSCAPE phone (#2152, 844×390 touch + insets): the mode row above
+   the stage and UNDO/FIT floating on the map left 22px of a 78px map to draw
+   on. The mode bar moves over the rail, the stage takes the column's full
+   height, the toolbar becomes a column beside the map (never over it), the
+   strip keeps its 48px grips and the foot message shares the button row. */
+@media (max-height: 500px) and (orientation: landscape) {
+  #trackdesigner .td-body { grid-template-columns: minmax(0, 1fr) minmax(240px, 44%); grid-template-rows: auto minmax(0, 1fr); }
+  #trackdesigner [data-role="mode-bar"] { grid-column: 2; grid-row: 1; }
+  #trackdesigner [data-role="mode-bar"] > .td-chips { gap: 0; }
+  #trackdesigner [data-role="mode-bar"] .sel-chip { letter-spacing: 0; min-width: var(--tap-paint); }
+  #trackdesigner .td-rail { grid-column: 2; grid-row: 2; }
+  #trackdesigner .td-stage {
+    grid-column: 1; grid-row: 1 / span 2;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: minmax(72px, 1fr) auto;
+    column-gap: calc(var(--gap) / 2);
+  }
+  #trackdesigner .td-stage > canvas:not([data-role="profile"]) { grid-column: 1; grid-row: 1; }
+  #trackdesigner .td-stage > canvas[data-role="profile"] { grid-column: 1; grid-row: 2; height: 48px; min-height: 48px; }
+  #trackdesigner[data-mode="elevation"] .td-stage > canvas[data-role="profile"] { height: clamp(72px, 40%, 96px); min-height: 72px; }
+  #trackdesigner .td-stage > .td-chips[data-role="toolbar"],
+  #trackdesigner[data-mode="scenery"] .td-stage > .td-chips[data-role="toolbar"] {
+    position: static; grid-column: 2; grid-row: 1 / span 2;
+    flex-flow: column wrap; align-content: start; gap: calc(var(--gap) / 4);
+    pointer-events: auto;
+  }
+  #trackdesigner .td-stage > .td-chips[data-role="toolbar"] .sel-chip,
+  #trackdesigner[data-mode="scenery"] .td-stage > .td-chips[data-role="toolbar"] .sel-chip {
+    flex: none; width: 4.75rem; min-height: var(--tap-paint); justify-content: center;
+  }
+  #trackdesigner .td-foot { flex-wrap: nowrap; align-items: center; }
+  /* Two lines at most; the live region still announces the whole message. */
+  #trackdesigner .td-foot .td-msg { flex: 1 1 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+  #trackdesigner .td-foot .td-msg:empty { display: none; }
+}
+
+/* Portrait toolbar safety: the floating edit strip covered the first row of
+   control points on phones. Give it its own auto-sized row so every map point
+   remains visible and tappable; short landscape keeps the dedicated side rail
+   above. Scenery already owns this row and its live-map row below. */
+@media (max-width: 760px) and (orientation: portrait) {
+  #trackdesigner:not([data-mode="scenery"]) .td-stage {
+    grid-template-rows: auto minmax(72px, 1fr) auto;
+  }
+  #trackdesigner:not([data-mode="scenery"]) .td-stage > .td-chips[data-role="toolbar"] {
+    position: static;
+    grid-row: 1;
+    pointer-events: auto;
+  }
+  #trackdesigner:not([data-mode="scenery"]) .td-stage > canvas:not([data-role="profile"]) {
+    grid-row: 2;
+  }
+  #trackdesigner:not([data-mode="scenery"]) .td-stage > canvas[data-role="profile"] {
+    grid-row: 3;
+  }
+}
+
+/* The editor follows the workflow, while collection and help get full pages. */
+#trackdesigner [data-role="mode-bar"] { display: flex; flex-direction: row; align-items: center; gap: calc(var(--gap) / 2); min-width: 0; }
+#trackdesigner [aria-label="Designer mode"] { flex: 1; display: flex; flex-wrap: nowrap; }
+#trackdesigner [aria-label="Designer mode"] > button { flex: 1 0 auto; white-space: nowrap; }
+#trackdesigner [aria-label="Designer mode"] > button::before { content: attr(data-step); color: var(--dim); margin-inline-end: calc(var(--gap) / 3); }
+#trackdesigner .td-rail { scroll-padding-top: calc(var(--tap-paint) + var(--gap) * 2); overflow-anchor: none; }
+#trackdesigner [data-role="mode-bar"] [data-role="context-help"] { flex: none; }
+#trackdesigner .td-stage { container-type: inline-size; container-name: designer-map; }
+@media (min-height: 501px) {
+  #trackdesigner .td-stage > .td-chips[data-role="toolbar"] .sel-chip { flex: 1 1 0; min-width: 0; padding-inline: calc(var(--gap) / 3); }
+  @container designer-map (max-width: 520px) {
+    #trackdesigner .td-stage > .td-stats, #trackdesigner .td-stage > .td-hint { display: none; }
+    #trackdesigner[data-mode="elevation"] .td-stage > canvas[data-role="profile"] { height: max(56px, calc(var(--chip-h) * 1.5)); min-height: 56px; }
+  }
+}
+#trackdesigner details[data-role="inspector-section"] { display: block; border-top: 1px solid var(--plate-line); padding-block: calc(var(--gap) / 2); }
+#trackdesigner details[data-role="inspector-section"] > summary { cursor: pointer; min-height: var(--tap-paint); align-content: center; }
+#trackdesigner details[data-role="inspector-section"] > :not(summary) { margin-top: calc(var(--gap) / 2); }
+#trackdesigner summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+#trackdesigner:is([data-pane="library"], [data-pane="howto"]) .td-stage,
+#trackdesigner:is([data-pane="library"], [data-pane="howto"]) [data-role="mode-bar"] { display: none; }
+#trackdesigner:is([data-pane="library"], [data-pane="howto"]) .td-body { grid-template-rows: minmax(0, 1fr); }
+#trackdesigner:is([data-pane="library"], [data-pane="howto"]) .td-rail { grid-column: 1 / -1; grid-row: 1; container-type: normal; padding-inline: var(--gap); }
+#trackdesigner [data-pane="library"] > .td-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); }
+#trackdesigner [data-pane="howto"] { max-width: 70em; width: 100%; align-self: center; }
+#trackdesigner [data-role="theme-summary"] { background: var(--bg); padding-block: calc(var(--gap) / 2); }
+#trackdesigner [data-role="theme-summary"] [data-role="theme-blurb"] { min-height: 0; }
+#trackdesigner [data-role="look-summary"] { overflow-wrap: anywhere; }
+#trackdesigner .td-foot { display: grid; grid-template-columns: repeat(3, minmax(0, max-content)) minmax(0, 1fr); align-items: center; gap: calc(var(--gap) / 2); }
+#trackdesigner [data-role="file-menu"] { position: relative; justify-self: end; min-width: 0; }
+#trackdesigner [data-role="file-menu"] > summary { cursor: pointer; text-align: center; }
+#trackdesigner [data-role="file-menu"] [data-role="file-actions"] { position: absolute; bottom: calc(100% + var(--gap)); right: 0; width: min(80vw, 28em); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: var(--gap); background: var(--bg); border: 1px solid var(--plate-line); border-radius: var(--r-md); z-index: 5; box-sizing: border-box; }
+#trackdesigner [data-role="workspace-status"] { grid-column: 1 / -1; align-items: center; min-width: 0; }
+#trackdesigner [data-role="workspace-status"] .td-msg { grid-column: auto; flex: 1 1 12em; }
+#trackdesigner [data-role="checks-summary"] { flex: none; font-size: var(--fs-micro); }
+#trackdesigner [data-role="checks-summary"][data-level="red"] { border-color: var(--slower); color: var(--slower); }
+#trackdesigner [data-role="checks-summary"][data-level="amber"] { border-color: var(--sec-slow); }
+@media (max-width: 760px) {
+  #trackdesigner [data-role="mode-bar"] { flex-wrap: wrap; }
+  #trackdesigner [data-role="context-help"] { min-height: var(--tap-paint); }
+  #trackdesigner [aria-label="Designer mode"] { flex-basis: 100%; }
+  #trackdesigner [data-role="context-help"] { display: none; }
+  #trackdesigner .td-foot { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  #trackdesigner [data-role="file-menu"] { justify-self: stretch; }
+  #trackdesigner [data-role="file-menu"] > summary { padding-inline: calc(var(--gap) / 3); }
+  #trackdesigner [data-role="workspace-status"] { gap: calc(var(--gap) / 3); }
+  #trackdesigner [data-role="workspace-status"] .td-msg { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  #trackdesigner:not([data-mode="scenery"]) .td-stage { grid-template-rows: minmax(72px, 1fr) auto; }
+  #trackdesigner:not([data-mode="scenery"]) .td-stage > canvas:not([data-role="profile"]) { grid-row: 1; }
+  #trackdesigner:not([data-mode="scenery"]) .td-stage > canvas[data-role="profile"] { grid-row: 2; }
+  #trackdesigner:not([data-mode="scenery"]) .td-stage > .td-chips[data-role="toolbar"] { grid-column: 2; grid-row: 1 / span 2; }
+  #trackdesigner [data-role="workspace-status"] { flex-wrap: nowrap; }
+  #trackdesigner [data-role="workspace-status"] .td-msg { min-width: 0; }
+}
+@media (max-width: 760px) and (orientation: portrait) {
+  #trackdesigner .td-body { grid-template-rows: auto minmax(0, 1.3fr) minmax(0, 1fr); }
+}
+
+/* Preserve useful canvas and inspector space on short or enlarged interfaces.
+   Scrolling belongs to the dialog once those minimums cannot fit together. */
+@container designer-shell (max-height: 600px) {
+  #trackdesigner .sheet-head { padding-block: calc(var(--gap) / 2); }
+  #trackdesigner .td-body { min-height: calc(var(--tap) * 8); }
+  #trackdesigner .td-rail { min-height: calc(var(--tap) * 3.5); }
+  #trackdesigner .td-stage { min-height: calc(var(--tap) * 4.5); }
+  #trackdesigner .td-stage > .td-stats,
+  #trackdesigner .td-stage > .td-hint { display: none; }
+  #trackdesigner .td-foot .td-msg { min-width: 0; flex-basis: 100%; white-space: normal; overflow-wrap: anywhere; }
+}
+/* Use the effective width, not the unscaled viewport, for stacked editing. */
+@container designer-shell (max-width: 500px) and (max-height: 600px) {
+  #trackdesigner .td-body { min-height: calc(var(--tap) * 12); grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); }
+  #trackdesigner [data-role="mode-bar"] { grid-column: 1; grid-row: 1; }
+  #trackdesigner[data-pane="design"] .td-stage { height: calc(var(--tap) * 6); min-height: calc(var(--tap) * 6); grid-column: 1; grid-row: 2; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(72px, 1fr) auto; }
+  #trackdesigner[data-pane="design"] .td-stage > .td-chips[data-role="toolbar"] { position: static; grid-column: 1; grid-row: 1; flex-flow: row wrap; }
+  #trackdesigner[data-pane="design"] .td-stage > canvas:not([data-role="profile"]) { grid-column: 1; grid-row: 2; }
+  #trackdesigner[data-pane="design"] .td-stage > canvas[data-role="profile"] { grid-column: 1; grid-row: 3; }
+  #trackdesigner .td-rail { grid-column: 1; grid-row: 3; }
+  #trackdesigner:is([data-pane="library"], [data-pane="howto"]) .td-body { grid-template-rows: minmax(0, 1fr); }
+  #trackdesigner:is([data-pane="library"], [data-pane="howto"]) .td-rail { grid-row: 1; }
+}
+@container designer-shell (max-width: 360px) {
+  #trackdesigner .td-foot { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #trackdesigner .td-foot > .sel-edit,
+  #trackdesigner [data-role="file-menu"] > summary { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+  #trackdesigner [data-role="workspace-status"] { flex-wrap: wrap; }
+  #trackdesigner [data-role="checks-summary"] { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+}
+#trackdesigner [data-role="file-menu"] [data-role="file-actions"] { width: min(28em, calc(100cqw - var(--gap) * 2)); }
+
+/* Short landscape phone (JS seats the foot inside .td-body, data-foot="in"): no
+   title bar, the close button rides the tab row, map + strip left, rail and a
+   compact foot right. 852x393 measured: today header 60 + body 416 + foot 115
+   overflowed the screen and the dialog scrolled. */
+#trackdesigner[open][data-foot="in"] { grid-template-rows: 0 minmax(auto, 1fr); }
+#trackdesigner[data-foot="in"] .sheet-head { height: 0; padding: 0; margin: 0; overflow: visible; position: relative; z-index: 5; }
+#trackdesigner[data-foot="in"] .sheet-head h2 { display: none; }
+#trackdesigner[data-foot="in"] #td-close { width: var(--tap); height: var(--tap); min-width: var(--tap); min-height: var(--tap); position: absolute; top: calc(var(--gap) / 2); right: calc(var(--gap) / 2); }
+#trackdesigner[data-foot="in"] .td-body {
+  grid-template-columns: minmax(0, 1fr) minmax(250px, 45%);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: calc(var(--tap) * 5.5); padding-top: 0;   /* UI SIZE past ~150 % scrolls the dialog instead of crushing the rail */
+}
+#trackdesigner[data-foot="in"] .td-stage { grid-column: 1; grid-row: 1 / span 3; min-height: 0; }
+#trackdesigner[data-foot="in"] [data-role="mode-bar"] { grid-column: 2; grid-row: 1; padding-right: calc(var(--tap) + var(--gap)); gap: 0; }
+#trackdesigner[data-foot="in"] [aria-label="Designer mode"] > button::before { display: none; }
+#trackdesigner[data-foot="in"] [data-role="mode-bar"] > * { min-width: 0; padding-inline: 0; letter-spacing: 0; font-size: var(--fs-micro); }
+/* LIBRARY / HOW TO hide the mode bar: keep its row so the rail never changes height under a restored scroll position. */
+#trackdesigner[data-foot="in"]:is([data-pane="library"], [data-pane="howto"]) [data-role="mode-bar"] { display: flex; visibility: hidden; }
+#trackdesigner[data-foot="in"] .td-rail { grid-column: 2; grid-row: 2; min-height: calc(var(--tap) * 2.5); }
+#trackdesigner[data-foot="in"] .td-foot {
+  grid-column: 2; grid-row: 3;
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 1.1fr); gap: calc(var(--gap) / 2);
+  padding: calc(var(--gap) / 2) 0 calc(var(--pad) * 0.4);
+}
+#trackdesigner[data-foot="in"] .td-foot [data-role="workspace-status"] { grid-column: 1 / -1; flex-wrap: nowrap; }
+#trackdesigner[data-foot="in"] .td-foot .td-msg { display: none; }
+#trackdesigner[data-foot="in"] .td-foot .sel-edit, #trackdesigner[data-foot="in"] .td-foot .sel-chip,
+#trackdesigner[data-foot="in"] .td-foot [data-role="file-menu"] > summary { padding-inline: calc(var(--gap) / 3); min-width: 0; }
+
+/* APPEARANCE › TRACK DESIGNER (js/ui/screen-looks.js, key lookDesigner). Every rule is
+   gated on the knob being off its default, so the shipped designer is the absence of all of them. */
+/* Floors are painted pixels: re-derive them against the designer's own zoom. */
+:root[data-look-designer-size] #trackdesigner {
+  --tap: max(44px, calc(24px / var(--td-zoom)));
+  --chip-h: max(40px, calc(24px / var(--td-zoom)));
+  --tap-sm: max(30px, calc(24px / var(--td-zoom)));
+  --tap-min: max(24px, calc(24px / var(--td-zoom)));
+  --tap-paint: max(24px, calc(var(--tap-paint-at) / var(--td-zoom)));
+}
+:root[data-look-designer-split] #trackdesigner[data-foot="in"] .td-body { grid-template-columns: minmax(0, 1fr) minmax(250px, calc(100% - var(--look-designer-split))); }
+@media (min-width: 761px) and (orientation: landscape) {
+  :root[data-look-designer-split] #trackdesigner[data-foot="out"] .td-body { grid-template-columns: minmax(0, 1fr) minmax(240px, calc(100% - var(--look-designer-split))); }
+}
+:root[data-look-designer-text="small"] #trackdesigner { --fs-2: 14px; --fs-3: 15px; --fs-4: 16px; --fs-5: 17px; --fs-6: 18px; }
+:root[data-look-designer-text="large"] #trackdesigner { --fs-micro: 16px; --fs-2: 17px; --fs-3: 18px; --fs-4: 20px; --fs-5: 21px; --fs-6: 23px; }
+:root[data-look-designer-profile="short"] #trackdesigner .td-stage > canvas[data-role="profile"] { height: calc(var(--chip-h) * 1.6); min-height: var(--tap-paint); }
+:root[data-look-designer-profile="tall"] #trackdesigner .td-stage > canvas[data-role="profile"] { height: calc(var(--chip-h) * 3.4); }
+
+}
