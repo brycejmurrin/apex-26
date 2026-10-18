@@ -267,6 +267,9 @@ export interface CarState {
   /** Kerb grip smoother, 1 = full grip (game.js:5763, reset at :1918). */
   kerbGripSm: number;
 
+  /** Brake applied this step; replicated as the netplay F_BRAKE snapshot bit (f1-game js/net/netplay.js:80, applied to remote cars at :454). */
+  braking: boolean;
+
   // drivetrain (game.js:1790)
   gear: number;
   rpm: number;
