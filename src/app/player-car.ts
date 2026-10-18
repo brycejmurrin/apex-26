@@ -21,6 +21,7 @@ export function makePlayerCar(code = "YOU"): PlayerCar {
     s: 0, x: 0, prog: 0, lap: 0, px: 0, pz: 0, head: 0,
     speed: 0, vLat: 0, yawRateCur: 0,
     steerSm: 0, kerbGripSm: 1, kerbCueT: 0, braking: false,
+    lane: 0, // AI lane-preference state (f1-game game.js:1684 c.lane = c.lanePref); unused on the human path
     gear: 1, rpm: 5000, shiftT: 0,
     energy: 1, boostOn: false, deploying: false, xOn: false, aeroX: 0, xArmed: false,
     otT: 0, otE: 0, otOn: false, otEarned: false, otArmed: false, _otS: null, _otLap: null, _otHold: false,
