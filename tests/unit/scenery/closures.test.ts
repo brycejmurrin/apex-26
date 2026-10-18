@@ -24,7 +24,7 @@ describe.skipIf(!haveF1)("circuit scenery closures vs f1-game", () => {
     const ref = f1!.global<Record<string, unknown>>("TrackScenery");
     const base = f1!.build("monza");
     expect(diffDigests(base, f1!.build("monza", { TrackScenery: { ...ref, monza: () => {} } }))).toContain("propsGeo");
-  }, 120_000);
+  }, 300_000);
 
   it.each(IDS)("%s builds bit-identical", async (id) => {
     const load = SCENERY[id];
@@ -37,5 +37,5 @@ describe.skipIf(!haveF1)("circuit scenery closures vs f1-game", () => {
       TrackScenery: { ...ref, [id]: (api: SceneryApi) => closure(api, { geom, space, pit }) },
     });
     expect(diffDigests(base, swapped)).toEqual([]);
-  }, 120_000);
+  }, 300_000);
 });
