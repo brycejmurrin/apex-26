@@ -217,6 +217,22 @@ describe("track-maps-corners (f1-game)", () => {
     }
   });
 
+  test("detectCorners numbers curvature peaks in driving order over a built centreline", () => {
+    // New: the uncurated path (compute's fallback when a def has no turns), called directly.
+    for (const id of ["monza", "spa", "suzuka"]) {
+      const tr = Tracks.buildCenterline(byId(id), { line: false });
+      const crns = TrackMaps.detectCorners(tr);
+      assert.ok(crns.length >= 3, `${id}: ${crns.length} corners`);
+      crns.forEach((c, i) => {
+        assert.equal(c.n, i + 1, `${id}: numbered in order`);
+        assert.ok(c.f >= 0 && c.f < 1 && c.r > 0 && Number.isFinite(c.v), `${id} T${c.n}`);
+        assert.equal(c.cls, TrackMaps.classifyCorner(c.r, c.ang), `${id} T${c.n}: measureApex's class before any spread`);
+      });
+      // Deterministic: a second pass over a fresh build gives the same corners.
+      assert.deepEqual(TrackMaps.detectCorners(Tracks.buildCenterline(byId(id), { line: false })), crns);
+    }
+  });
+
   test("with AeroZones absent (the port's default) the map draws no activation zones", () => {
     // New: f1-game's "AeroZones unavailable" branch (track-maps.js:378), which is
     // the port's default until zonesFor lands.
