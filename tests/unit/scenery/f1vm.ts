@@ -107,6 +107,8 @@ export function createF1Vm(): F1Vm {
     scalar: { lerp: M4.lerp, clamp: M4.clamp },
     assets: sandbox["Assets"] ?? null,
     tracks: sandbox["Tracks"] ?? null,
+    glx: sandbox["GLX"] ?? null,
+    garage: sandbox["GarageScene"] ?? null,
   } as unknown as SceneryCore;
 
   // f1-game quirk: a scenery closure may `Object.assign(pal, ATM.x)`, which

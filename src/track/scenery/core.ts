@@ -54,9 +54,9 @@ export interface GeomCore {
 export interface BakedMesh {
   readonly pos: ArrayLike<number>;
   readonly idx: ArrayLike<number>;
-  readonly nrm?: ArrayLike<number> | null;
-  readonly col?: ArrayLike<number> | null;
-  readonly mat?: ArrayLike<number> | null;
+  readonly nrm?: ArrayLike<number> | null | undefined;
+  readonly col?: ArrayLike<number> | null | undefined;
+  readonly mat?: ArrayLike<number> | null | undefined;
   readonly [extra: string]: unknown;
 }
 
@@ -136,10 +136,39 @@ export interface SpaceCore {
   sceneryRange(def: SpaceDef, s0: number, s1: number): { s0: number; s1: number };
 }
 
+/** The pit sign atlas table. f1-game js/track/core/pit.js:41-64 (`TrackPit.SIGN`). */
+export interface PitSign {
+  readonly w: number;
+  readonly h: number;
+  readonly cols: number;
+  readonly cells: number;
+  readonly cellW: number;
+  readonly cellH: number;
+  readonly quadW: number;
+  readonly quadH: number;
+  readonly y0: number;
+  readonly proud: number;
+  readonly crests: number;
+  readonly crestPx: number;
+  readonly crestCols: number;
+  readonly crestY: number;
+  readonly crestW: number;
+  readonly crestY0: number;
+  readonly boards: number;
+  readonly boardW: number;
+  readonly boardH: number;
+  readonly boardY: number;
+  readonly boardM: readonly number[];
+  readonly signals: number;
+  readonly signalPx: number;
+  readonly signalY: number;
+  readonly signalW: number;
+}
+
 /** f1-game js/track/core/pit.js:484 (`TrackPit`), the members scenery reads. */
 export interface PitCore {
-  /** pit.js:41: pit-board sign atlas layout. TODO(scenery pits port): type the record. */
-  readonly SIGN: { readonly [key: string]: unknown };
+  /** pit.js:41-64: the pit sign atlas layout (fascias, crests, boards, signals). */
+  readonly SIGN: PitSign;
   /** pit.js:74. */
   readonly EXIT_WALL_W: number;
   /** pit.js:446: the lane's outer edge beyond `hw` at node `k`. */
@@ -203,6 +232,35 @@ export interface AssetsCore {
   modelSync(id: string): BakedMesh | null;
 }
 
+/** f1-game `GLX` (js/render/glx/glx.js:2991 `mobileTier`): the one member scenery reads (pits.js:36). */
+export interface GlxCore {
+  readonly mobileTier?: boolean;
+}
+
+/** A team livery as GarageScene.buildStatic takes it (pits.js:44). */
+export interface GarageLivery {
+  readonly c1: RVec3;
+  readonly c2: RVec3;
+  readonly accent: RVec3;
+}
+
+/**
+ * A baked garage bay. f1-game js/garage/scene.js:939-963 `buildStatic`
+ * returns plain-array accumulators (pos/nrm/col/mat/idx).
+ */
+export interface GarageBayMesh {
+  readonly pos: ArrayLike<number>;
+  readonly idx: ArrayLike<number>;
+  readonly nrm?: ArrayLike<number> | null;
+  readonly col?: ArrayLike<number> | null;
+  readonly mat?: ArrayLike<number> | null;
+}
+
+/** f1-game `GarageScene` (js/garage/scene.js:1416), the member pits.js:38-44 reads. */
+export interface GarageCore {
+  buildStatic(liv: GarageLivery, opts: { readonly props: "lite" }): GarageBayMesh | null;
+}
+
 export interface SceneryCore {
   readonly geom: GeomCore;
   readonly mesh: MeshCore;
@@ -219,4 +277,8 @@ export interface SceneryCore {
    * takes the same fallback.
    */
   readonly tracks: TracksCore | null;
+  /** The render backend; null headless (pits.js:36 `lowTier` is then false). */
+  readonly glx: GlxCore | null;
+  /** The setup screen's bay builder; null where the garage is not loaded (pits.js:38: no bays). */
+  readonly garage: GarageCore | null;
 }
