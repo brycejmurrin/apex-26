@@ -1,0 +1,327 @@
+/* Ported verbatim from f1-game css/responsive.css. */
+@layer overlays {
+/* Apex 26 — the few things that genuinely belong to the VIEWPORT rather than to
+   a component.
+   This file used to be ~250 lines of per-screen landscape overrides. It is short
+   now because the menus decide their own layout from the room they have:
+     * density (padding / tap size / label size)  → tokens in css/tokens.css
+     * layout  (columns, what is pinned)          → @container queries on .sheet
+   Anything that reads "on a phone, move THIS control" belongs in one of those
+   two places, not here. */
+
+/* ---------- LARGE SCREENS (iPad, desktop) ---------- */
+/* #sel-inner desktop height cap lives in css/overlays.css (deferred with
+   select.css) — not title-critical. Title composition media queries follow. */
+
+/* Main menu on a large LANDSCAPE screen: branding left, buttons right — as ONE
+   centred composition. Content-sized columns, centred as a pair. `1fr 1fr` split
+   the whole screen between them, so the wider the display the further apart they
+   drifted: on 1920x1080 the title sat hard against the left edge with ~630px of
+   nothing before the buttons.
+   ORIENTATION is part of the condition now. Side-by-side is a shape for a screen
+   with spare WIDTH; on a large PORTRAIT screen (an upright iPad, a rotated
+   monitor) it put the pair in the middle of a tall window with hundreds of
+   pixels of black above and below, so that case keeps the stack and only grows
+   — see the portrait block below. */
+/* The height half of this condition now comes from data-density, measured in the
+   units the content is actually laid out in (js/ui/sheet-shape.js). Orientation
+   and width stay media queries: zoom does not distort either.
+
+   `:where()` CARRIES ZERO SPECIFICITY, and that is the whole reason it is used
+   here rather than a bare prefix. A plain `.sheet[data-density=...]` ancestor adds
+   a class and an attribute to every selector in the block, which is enough to beat
+   a LATER rule that used to win — measured: #sel-inner's height cap started
+   overriding a rule it had always lost to, and the desktop select golden moved.
+   Wrapped in :where(), these rules keep exactly the specificity they had. */
+@media (min-width: 900px) and (orientation: landscape) {
+  :where(body:not([data-density="compact"])) #overlay {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    justify-content: center; align-content: center; justify-items: stretch;
+    /* Re-stating `safe center` because this block re-declares align-content and
+       would otherwise take the base rule's overflow bug back (css/menus.css). */
+    align-content: safe center;
+    column-gap: clamp(48px, 5vw, 96px); row-gap: 18px;
+    background:
+      radial-gradient(74% 82% at 38% 50% in oklab, color-mix(in oklab, var(--red) var(--menu-wash-pct, 22%), transparent), transparent 64%),
+      rgba(6,6,10,0.36);
+  }
+  :where(body:not([data-density="compact"])) #menu-brand { grid-column: 1; grid-row: 1; align-items: flex-start; }
+  /* ONE column of buttons, tiers stacked — the same shape the phone gets, just
+     bigger. Side by side (modes in one column, a 2x2 of utilities beside them)
+     made three visual columns across the screen, and the 2x2 read as a detached
+     island floating to the right of the real menu: it is centred against the
+     mode column, so it lines up with nothing, and its buttons are half the
+     size. Stacked, the tiers share one edge and one width, and the whole
+     composition is two blocks instead of three. */
+  :where(body:not([data-density="compact"])) #menu-brand,
+  :where(body:not([data-density="compact"])) #menu-buttons {
+    width: min(calc(32 * var(--vwz)), 100%);
+    min-width: 0;
+    max-width: 100%;
+  }
+  :where(body:not([data-density="compact"])) #menu-buttons {
+    grid-column: 2; grid-row: 1; align-self: center;
+    /* --vwz like the widths two rules down — this element is zoomed. */
+    gap: clamp(8px, calc(1.2 * var(--vwz)), 16px); justify-items: stretch;
+    /* Same skew gutter compact already uses — CAREER's -6deg hang measured
+       418px against a 410px column without it. */
+    padding-inline: var(--gap);
+  }
+  /* ONE --vwz width for brand and all THREE tiers. The old 320–420px clamp
+     stopped growing on a wide display and ignored UI SIZE; 32vwz scales with
+     the viewport and divides by --ui-scale so zoom does not overflow. */
+  :where(body:not([data-density="compact"])) #menu-hero,
+  :where(body:not([data-density="compact"])) #menu-primary,
+  :where(body:not([data-density="compact"])) #menu-secondary { width: 100%; gap: clamp(8px, calc(1 * var(--vwz)), 12px); }
+  :where(body:not([data-density="compact"])) #menu-explore { width: 100%; gap: clamp(8px, calc(1 * var(--vwz)), 12px); }
+  :where(body:not([data-density="compact"])) #menu-buttons .minibtn { padding: 9px 6px 9px 10px; }
+  /* Small print scales too. At a flat 11/12px it read as a stray line of text
+     dropped near the title rather than a caption belonging to it. */
+  :where(body:not([data-density="compact"])) #audiostate,
+  :where(body:not([data-density="compact"])) #disclaimer { font-size: clamp(11px, calc(0.8 * var(--vwz)), 14px); }
+}
+
+/* THE FRONT WING STAYS ON SCREEN — TABLET LANDSCAPE ONLY. Sibling of the
+   large-landscape block above, not inside it: that block is also the 1440×900
+   desktop title (menu-baseline's title-desktop golden). The generator's one
+   placement (tools/gen/title-art.mjs, translate(202 675) scale(0.99)) puts
+   the nearer car's front wing at viewBox x -67, and on the two-column layout
+   at its smallest nothing re-frames it: MEASURED 2026-10-05 (layout-audit,
+   ios-ipad-landscape 1194x834): #tc-frame and every car group ran 57 px past
+   the svg's left edge, the wing cut off at the screen edge under the
+   wordmark. 72 units right clears it with a hair of air; the trail end, 82
+   units inside the right edge, keeps ~10. Same per-shape #tc-frame mechanism
+   the phone shapes use (css/menus.css).
+   An unguarded translate in the ≥900 landscape block moved the car 72 px on
+   every mouse desktop (CI 2026-10-05, 50758 px / 0.04 of the title-desktop golden).
+   Cap at 1366 (iPad Pro 12.9 landscape) and require a coarse pointer so a
+   1280 laptop with a mouse keeps the shipped composition. */
+@media (min-width: 900px) and (max-width: 1366px) and (orientation: landscape) and (pointer: coarse) {
+  :where(body:not([data-density="compact"])) #tc-frame { transform: translate(72px, 0); }
+}
+
+/* ---------- LARGE PORTRAIT (iPad upright, a rotated monitor) ---------- */
+/* Keeps the stacked composition — a tall screen has height to spend, not width —
+   but not the phone's SIZES. A 340px button column centred in an 834px iPad left
+   the menu as a small island with ~250px of dead space either side, and the type
+   was sized for a screen a third as wide. */
+/* Guarded like its landscape sibling above: this block grows the NON-compact
+   stacked composition. Unguarded, a compact-density body on a large portrait
+   window (the sheet measured itself compact in content units) got these
+   widths and type sizes layered over the compact layout they contradict. */
+@media (orientation: portrait) and (min-width: 700px) {
+  :where(body:not([data-density="compact"])) #title { font-size: clamp(56px, calc(10 * var(--vwz)), 120px); }
+  :where(body:not([data-density="compact"])) #audiostate,
+  :where(body:not([data-density="compact"])) #disclaimer { font-size: clamp(12px, calc(1.3 * var(--vwz)), 16px); }
+  /* 660px cap: 66vw was tuned for an 834px iPad (≈550px) and scales linearly
+     with nothing else growing — on an unfolded foldable or rotated 4K portrait
+     (2064px wide) it made a 1362px button column while #title stays clamped at
+     120px and .bigbtn at 28px. 660px matches what the landscape branch's
+     32vw yields on the same physical width. */
+  :where(body:not([data-density="compact"])) #menu-hero,
+  :where(body:not([data-density="compact"])) #menu-primary,
+  :where(body:not([data-density="compact"])) #menu-secondary { width: min(calc(66 * var(--vwz)), 660px, 100%); }
+  :where(body:not([data-density="compact"])) #menu-explore { width: min(calc(66 * var(--vwz)), 660px, 100%); }
+  :where(body:not([data-density="compact"])) #menu-buttons { gap: 14px; }
+  :where(body:not([data-density="compact"])) #menu-buttons .bigbtn { font-size: clamp(20px, calc(2.4 * var(--vwz)), 28px); }
+  :where(body:not([data-density="compact"])) #menu-buttons .minibtn { font-size: clamp(14px, calc(1.5 * var(--vwz)), 18px); }
+  :where(body:not([data-density="compact"])) #mb-career-sub { font-size: clamp(14px, calc(1.1 * var(--vwz)), 15px); }
+}
+
+/* Large-screen HUD readout scale lives in css/overlays.css (deferred with
+   hud.css) — in-race only. */
+
+/* Short-landscape HUD shrink used to live here behind
+   `(orientation: landscape) and (max-height: 560px)`. That query is zoom-blind
+   and duplicated `body[data-density="compact"]` in css/hud.css (852×393 is
+   already body compact at --compact-at 600). Spacing tokens for #overlay stay
+   in css/tokens.css. */
+
+/* The keyboard focus ring lives in css/tokens.css (@layer base). It was here,
+   in @layer overlays, where it out-ranked every component-level focus override
+   by layer order alone — see the comment on :focus-visible there. */
+
+[hidden] { display: none !important; }
+/* Default-hidden until overlays.css (print→all) applies the portrait in-race
+   flex + chrome. Without this, a cold phone load paints the unstyled
+   #rotate-device block in document flow over #overlay (css-play withhold,
+   393×852 and 852×393). Specificity (1,0,1) loses to the overlays show rule
+   `body.in-race:not(.rotate-ok) #rotate-device`. .pane-pair hosts stay
+   [hidden] here, so they do not need a twin. */
+#rotate-device { display: none; }
+
+/* ---------- MENU MOTION (js/ui/title-fx.js) ---------- */
+/* MOTION: REDUCED, or an OS that asks for reduced motion, puts
+   data-motion="reduce" on <html> (first set by the inline script in
+   index.html, before first paint). Same shape as the prefers-reduced-motion
+   backstop in css/tokens.css — instant and non-repeating rather than `none`,
+   so a one-shot reveal still lands on its end state — but keyed on the
+   player's choice, and scoped to the menus: the title screen and every
+   dialog sheet. !important for the backstop's reason: it has to beat every
+   per-element animation shorthand without matching their specificity.
+   #rotate-device is named on its own: it is neither #overlay nor a .screen,
+   so its .rotate-icon swung `infinite alternate` for a player who had asked
+   for less motion, and only the OS query stopped it. */
+:root[data-motion="reduce"] :is(#overlay, .screen, #rotate-device) *,
+:root[data-motion="reduce"] :is(#overlay, .screen, #rotate-device) *::before,
+:root[data-motion="reduce"] :is(#overlay, .screen, #rotate-device) *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+/* A hidden tab stops spending frames on a menu nobody can see. */
+#overlay[data-paused] *,
+#overlay[data-paused] *::before,
+#overlay[data-paused] *::after { animation-play-state: paused !important; }
+
+/* ---------- TITLE BUTTONS UNDER FORCED COLORS / MORE CONTRAST ---------- */
+/* css/tokens.css restates selection and panel edges for forced-colors; this
+   is the title screen's half. .bigbtn draws itself with a gradient fill and
+   `border: none`, and forced colors computes that gradient to nothing, so a
+   title door became bare text floating on Canvas. A system-colour border gives
+   it back its edge. The focus ring stays an OUTLINE — never outline:none plus
+   a box-shadow, which forced colors strips — recoloured to Highlight and drawn
+   inset (the base :focus-visible reason: #overlay clips an outset ring). */
+@media (forced-colors: active) {
+  /* EVERY .bigbtn, not only the title's: GO, NEXT, DONE, APPLY, SAVE, HOST
+     and TO THE GRID are all the same gradient-and-no-border button, and all of
+     them became bare text on Canvas. */
+  .bigbtn { border: 2px solid ButtonText; }
+  #overlay .bigbtn:focus-visible {
+    outline: 3px solid Highlight;
+    outline-offset: -5px;
+  }
+  #disclaimer { border-color: CanvasText; }
+  /* hover had no system-colour cue at all: the gradient it swaps is gone */
+  @media (hover: hover) and (pointer: fine) {
+    .bigbtn:hover { border-color: Highlight; }
+  }
+  /* the hero is the one door that was only told apart by its red fill */
+  #mb-career { border-width: 3px; }
+}
+/* prefers-contrast: more — css/components.css already makes the sheets opaque;
+   here the title doors get a full-strength edge and the disclaimer drops its
+   75% text mix, the one run of small print on the screen. Tokens only. */
+@media (prefers-contrast: more) {
+  #overlay .bigbtn { border: 2px solid var(--text); }
+  #disclaimer { color: var(--text); border-color: var(--text); }
+}
+
+/* THE PHONE'S FOCUS. The phone's D-pad moves focus with synthetic keys, and a
+   browser may not draw :focus-visible for that (Safari after a touch or a
+   click) or any focus at all while its window is not the focused one — the
+   player is holding the phone, not using this screen. PhonePad.link() marks
+   the phone's focus .pad-ring; overlays layer, so no component's own
+   `outline: none` hides it. Same inset geometry as the base ring, one step
+   heavier, plus a halo, because it is read from the sofa. */
+.pad-ring {
+  outline: max(3px, calc(3px / var(--ui-scale, 1))) solid var(--focus);
+  outline-offset: calc(-1 * max(3px, calc(3px / var(--ui-scale, 1))));
+  box-shadow: 0 0 0 max(2px, calc(2px / var(--ui-scale, 1))) color-mix(in srgb, var(--focus) 35%, transparent);
+}
+
+/* ---------- TITLE LAYOUT player setting (js/ui/title-layout.js) ----------
+   Every rule keys on html[data-title-layout], which only a CUSTOM layout sets —
+   untouched, none of this matches and the title screen is the shipped one.
+   In this layer on purpose: it must beat both the component rules (menus.css)
+   and the two-column landscape block above, whatever their specificity.
+   MOVES ARE `translate`, SIZES ARE `zoom`. The individual `translate` / `scale`
+   properties compose with the intro's `transform` keyframes instead of
+   replacing them. Size is zoom on the two UI pieces so a bigger cluster still
+   takes up layout room and scrolls like the shipped one; the drawing is not a
+   grid item, so it scales from its foot. */
+:root[data-title-layout] #menu-buttons {
+  translate: var(--tl-btns-x, 0) var(--tl-btns-y, 0);
+  zoom: calc(var(--ui-scale) * var(--tl-btns-size, 1));
+}
+:root[data-title-layout] #menu-brand {
+  translate: var(--tl-title-x, 0) var(--tl-title-y, 0);
+  zoom: calc(var(--ui-scale) * var(--tl-title-size, 1));
+}
+:root[data-title-layout] #title-car {
+  translate: var(--tl-art-x, 0) var(--tl-art-y, 0);
+  scale: var(--tl-art-size, 1);
+  transform-origin: 50% 100%;
+}
+/* WIDTH: a share of the SCREEN, whatever the cluster's size. --vwz already
+   undoes --ui-scale; dividing by the size undoes the cluster's own zoom. The
+   rows then fill the cluster instead of their per-shape shipped widths. */
+:root[data-title-btnw] #menu-buttons {
+  width: calc(var(--tl-btns-w, 100) * var(--vwz) / var(--tl-btns-size, 1));
+  max-width: none; min-width: 0; justify-self: center;
+}
+:root[data-title-btnw] #menu-buttons > :is(#menu-hero, #menu-primary, #menu-explore, #menu-secondary) { width: 100%; max-width: none; }
+/* LAYOUT. .balanced-row sizes its children from --balance-basis / -min
+   (css/components.css): 100% is one per line, 0px is one equal row. */
+:root[data-title-btns="stack"] #menu-buttons > :is(#menu-primary, #menu-explore, #menu-secondary) { --balance-basis: 100%; --balance-min: 100%; }
+:root[data-title-btns="stack"] #menu-retention { grid-template-columns: minmax(0, 1fr); }
+:root[data-title-btns="row"] #menu-buttons > :is(#menu-primary, #menu-explore, #menu-secondary) { --balance-basis: 0px; --balance-min: 0px; flex-wrap: nowrap; }
+/* ONE ROW MEANS SHRINK: css/menus.css floors the doors at their longest word
+   (min-content) so a narrow 2x2 wraps instead of clipping; a nowrap row has
+   no line to wrap onto, so it keeps the old shrink-to-fit cells. */
+:root[data-title-btns="row"] #menu-buttons > :is(#menu-primary, #menu-explore, #menu-secondary) > .bigbtn { min-width: 0; }
+/* SIDE. Two-column shapes trade columns; a single column trades order. */
+:root[data-title-side="swap"] #menu-brand { order: 1; }
+:root[data-title-side="swap"] :where(body[data-shape="tall"]) #menu-brand { grid-row: 2; }
+:root[data-title-side="swap"] :where(body[data-shape="tall"]) #menu-buttons { grid-row: 1; }
+:root[data-title-side="swap"] :where(body[data-shape="wide"][data-density="compact"]) #overlay { grid-template-columns: min(46%, 400px) minmax(0, 1fr); }
+:root[data-title-side="swap"] :where(body[data-shape="wide"][data-density="compact"]) #menu-brand { grid-column: 2; }
+:root[data-title-side="swap"] :where(body[data-shape="wide"][data-density="compact"]) #menu-buttons { grid-column: 1; }
+@media (min-width: 900px) and (orientation: landscape) {
+  /* The density guard FIRST (tests/unit/css-media-disjoint.test.mjs); the swap
+     condition rides in a second zero-specificity :where(), and the rule wins on
+     order — same specificity and layer as the placement above, and later. */
+  :where(body:not([data-density="compact"])):where(:root[data-title-side="swap"] *) #menu-brand { grid-column: 2; }
+  :where(body:not([data-density="compact"])):where(:root[data-title-side="swap"] *) #menu-buttons { grid-column: 1; }
+}
+/* PEEK (js/ui/screen-looks.js → html[data-appearance-peek="<screen>"]): while
+   an APPEARANCE knob changes, the settings page fades to a ghost and the
+   screen that knob describes shows behind it. TITLE: css/components.css fades
+   #overlay under any open dialog, so the peek lifts that. Non-title screens
+   are revealed in css/overlays.css (deferred — not title-critical). */
+:root[data-appearance-peek="title"] #overlay { opacity: 1; }
+:root[data-appearance-peek] #pmsettings { background: transparent; }
+:root[data-appearance-peek] #pmsettings::backdrop { background: transparent; }
+:root[data-appearance-peek] #pmsettings > * { opacity: 0.14; transition: opacity 0.12s; }
+:root[data-appearance-peek][data-motion="reduce"] #pmsettings > * { transition: none; }
+:root[data-appearance-peek] #pmsettings :focus-visible { outline-color: transparent; }   /* a ring would read through the ghost; it returns with the page */
+/* EDIT ON TITLE SCREEN (html[data-tl-edit], js/ui/title-layout.js): the pieces
+   are outlined and dragged whole — their own controls take no pointer, so a
+   press on a door is the door's piece, never its click. #tl-art is the
+   drawing's transparent stand-in (the drawing itself is pointer-events:none),
+   laid under the doors so where they overlap the doors win. #tl-editor is a
+   small bar docked at the foot, above #overlay (z 20); #tl-handle, fixed at the
+   selected piece's corner, sizes it. No zoom on the bar: its fixed handle
+   would move with it. */
+:root[data-tl-edit] :is(#menu-buttons, #menu-brand, #tl-art) {
+  outline: 2px dashed color-mix(in oklab, var(--text) 55%, transparent);
+  outline-offset: 4px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+:root[data-tl-edit] :is(#menu-buttons, #menu-brand, #tl-art)[data-tl-sel] { outline: 2px solid var(--red); }
+:root[data-tl-edit] :is(#menu-buttons, #menu-brand) * { pointer-events: none; }
+:root[data-tl-edit] #tl-art { position: absolute; z-index: -1; zoom: normal; pointer-events: auto; }
+:root[data-tl-edit] #tl-editor {
+  position: fixed; z-index: 44;
+  left: 0; right: 0; bottom: var(--safe-b); margin-inline: auto;
+  width: max-content; max-width: min(var(--safe-w), calc(100vw - 16px));
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+  gap: calc(var(--gap) * 0.5); padding: calc(var(--gap) * 0.5) calc(var(--gap) * 2 / 3);
+  background: var(--panel); border: 1px solid var(--plate-line); border-radius: 10px;
+}
+:root[data-tl-edit] #tl-editor > button { margin: 0; min-height: var(--tap-min); }
+:root[data-tl-edit] #tl-piece { padding-inline: calc(var(--gap) / 3); }
+:root[data-tl-edit] #tl-handle {
+  position: fixed; width: 22px; height: 22px; translate: -50% -50%;
+  border-radius: 50%; background: var(--red); border: 2px solid var(--text);
+  cursor: nwse-resize; touch-action: none;
+}
+
+/* ---------- SCREEN LOOKS (moved) ----------
+   Per-screen APPEARANCE folds + non-title peek reveals live in
+   css/overlays.css (deferred). Title peek + tl-edit stay above. */
+
+
+} /* @layer overlays */

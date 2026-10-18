@@ -1,3 +1,4 @@
+import "./styles";
 import { App } from "./app/app";
 import { createDebugApi } from "./debug/api";
 import { createTrackRenderer } from "./render/renderer";

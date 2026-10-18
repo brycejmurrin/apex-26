@@ -1,0 +1,721 @@
+/* Ported verbatim from f1-game css/components.css. */
+@layer components {
+/* Apex 26 — THE MENU SYSTEM.
+   Three primitives that every menu is built from. Screens used to each invent
+   their own box model and then get patched per viewport, which is how content
+   ended up under the Dynamic Island and how primary buttons ended up below the
+   fold. Now:
+
+     .screen   a full-viewport overlay, inset by the OS safe area, that centres
+     .sheet    a card with a fixed head, ONE scrolling body and a pinned foot
+     .pane     a scroll region that says so (fade at the edge that has more)
+
+   Two rules keep it honest:
+     * DENSITY (padding, tap size, label size) comes from tokens and is the only
+       thing a viewport media query may change — see css/tokens.css.
+     * LAYOUT (column counts, what moves into the header) comes from container
+       queries on the sheet, so a panel reacts to the room it actually has
+       rather than to a guess about the device. */
+
+/* ---------- grain ----------
+   Opt-in dither for the surfaces that carry a big, slow, dark gradient — the
+   title screen's radial red wash and the data hub's header bleed. Those are the
+   textbook banding case: a few hundred pixels of near-black with only a handful
+   of distinct 8-bit values to spend, which renders as stripes on a phone.
+   A few percent of noise breaks the bands into grain the eye reads as texture.
+
+   z-index: -1, not a positive one. These hosts are stacking contexts, so a
+   negative index paints the grain ABOVE the element's own background and BELOW
+   every child — which is the only ordering that dithers the gradient without
+   also veiling the title sitting on it. */
+.grain { position: relative; isolation: isolate; }
+.grain::before {
+  content: "";
+  position: absolute; inset: 0; z-index: -1;
+  pointer-events: none;
+  background-image: var(--grain);
+  background-size: 160px 160px;
+  opacity: var(--grain-opacity, 0.05);
+  mix-blend-mode: overlay;
+}
+/* Grain is texture, and texture is motion-adjacent for some people; it also
+   costs a composited layer. Both reasons to drop it when asked for less. */
+@media (prefers-reduced-transparency: reduce) {
+  .grain::before { display: none; }
+}
+
+/* Menu <input type=range> — native accent chrome (filled track + UA thumb).
+   Height is --slider (32 painted px): it divides by --ui-scale so UI SIZE
+   zoom does not grow the hit. Every range is red; only MUSIC / Spotify
+   volume goes grey while the matching switch is off. */
+input[type="range"] {
+  height: var(--slider);
+  min-height: var(--slider);
+  accent-color: var(--red);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+input[type="range"]:disabled { cursor: default; }
+
+/* ---------- screen: full-viewport overlay ---------- */
+.screen {
+  position: fixed; inset: 0;
+  display: grid;
+  /* ONE EXPLICIT COLUMN, not an implicit auto track. Without this the sheet is
+     placed in an implicit `auto` track, and whether `width: min(100%, …)` on
+     the sheet resolves against the SCREEN or against the sheet's own content
+     then depends on the engine's "stretch auto tracks" step. Chromium stretches
+     it and the cap applies; WebKit does not appear to, so `100%` resolves
+     against a content-sized track and the sheet collapses onto its widest
+     child — which for a dialog whose widest child is a `.bigbtn` means
+     min(78vw, 340px) + padding, i.e. ~389px on an 852px iPhone instead of the
+     520px the CSS says. Reported as "the menu only uses half my screen".
+     `minmax(0, 1fr)` makes the track definite, so both engines resolve the
+     percentage against the same box. The 0 minimum matters: a bare `1fr` floors
+     at min-content and would let a wide child push the track past the screen. */
+  grid-template-columns: minmax(0, 1fr);
+  place-items: center;
+  /* The safe-area padding is the point of this class. viewport-fit=cover means
+     the viewport includes the notch and the home indicator; anything centred
+     without this padding is centred under hardware. */
+  padding: var(--safe-t) var(--safe-r) var(--safe-b) var(--safe-l);
+  /* The software keyboard covers the layout viewport's bottom without moving
+     it; --kb (layout px, written by SheetShape's keyboard watcher, resting
+     0px in tokens.css) is how much. max() with the safe-area pad: a keyboard
+     already clears the home indicator, so the two must never stack. The
+     screen host is unzoomed (zoom rides the sheet), so --kb needs no scale
+     division. Inert everywhere a keyboard isn't up. */
+  padding-bottom: max(var(--safe-b), var(--kb));
+  overscroll-behavior: contain;
+}
+
+/* CLOSED DIALOG = NO BOX, OPEN DIALOG = VIEWPORT BOX.
+   These three rules used to live only in css/dialog-platform.css. That file
+   is print→all (title-critical cut). Until onload flips media, author
+   `.screen { display: grid }` beats the UA `dialog:not([open]) { display: none }`,
+   so a `hidden = false` → TopModal showModal() seam lays the dialog out closed.
+   Chromium then drops child boxes on top-layer re-attach (css-layers unit;
+   measured #customize head/foot 0×0). UA dialog is also width/height
+   fit-content — `.screen { inset: 0 }` does not stretch that — so a 0×0
+   subtree leaves a 0-box :modal that UiLayers shownLayer() skips (selected-1
+   menu-keyboard, #standings over #pausemenu, CI 37439242991 / 37436631474).
+   Keep the copy in dialog-platform for the same-layer family; this blocking
+   restatement is the one that races print→all. */
+dialog.screen {
+  margin: 0;
+  border: 0;
+  padding: var(--safe-t) var(--safe-r) var(--safe-b) var(--safe-l);
+  max-width: none; max-height: none;
+  width: 100%; height: 100%;
+  background: transparent;
+  color: inherit;
+  overflow: hidden;
+}
+dialog.screen:not([open]) { display: none; }
+dialog.screen[open] { display: grid; }
+
+/* ---------- dialogs arrive, rather than appearing ----------
+   Scoped to `.dim` — the modal sheets. The two full-screen flows (#select,
+   #carsetup) are swapped inside a View Transition (game.js wraps the title/
+   select/garage spine in Menus' vt()), and animating those here would run
+   two transitions over each other. This comment predated the wiring — the
+   spine swaps were bare hidden-flips for a year while it claimed otherwise;
+   the code now does what it says.
+   A CSS animation, not @starting-style: these screens are toggled with the
+   hidden attribute, so they come back from `display: none`, which restarts an
+   animation by itself and needs no allow-discrete plumbing. */
+@media (prefers-reduced-motion: no-preference) {
+  .screen.dim { animation: scrim-in 0.16s ease-out; }
+    /* no fill-mode: nothing may hold a dialog at zero opacity if the animation
+     never runs — the sheet must be visible either way. */
+  .screen.dim > .sheet { animation: sheet-in 0.19s cubic-bezier(0.2, 0.7, 0.3, 1); }
+}
+@keyframes scrim-in { from { opacity: 0; } }
+@keyframes sheet-in { from { opacity: 0; transform: translateY(10px) scale(0.985); } }
+
+/* ---------- typography ----------
+   balance keeps a heading from dropping one lonely word onto its own line —
+   these titles wrap constantly at phone widths. pretty does the same for the
+   orphan at the end of a paragraph of help text. Both are cheap and inert where
+   unsupported. */
+h1, h2, h3, .sheet-head h2, .adv-sec, .pm-group-h, .tune-label { text-wrap: balance; }
+p, .adv-help, .as-note, .dh-race-sub, .dh-error-msg { text-wrap: pretty; }
+/* HELP TEXT: HIDE (APPEARANCE › READABILITY, js/ui/appearance-opts.js →
+   html[data-menu-help="off"]). Drops the grey explanations in the settings
+   sheet and the race setup. A status line, a live region or a line marked
+   data-help="keep" (warnings, forecasts, readouts) is information, not
+   explanation, and stays. */
+:root[data-menu-help="off"] :is(#pmsettings, #rs-body) .adv-help:not([role="status"]):not([aria-live]):not([data-help="keep"]) { display: none; }
+
+/* ---------- sheet: head / body / foot ---------- */
+.sheet {
+  display: grid;
+  min-width: 0; min-height: 0;
+  grid-template-columns: minmax(0, 1fr);
+  /* body is the only flexible row, and minmax(0,…) lets it actually shrink —
+     without the 0 floor a long list forces the sheet past the screen instead
+     of scrolling inside it */
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  /* ZOOM IS THE ONLY LEVER THAT REACHES THIS UI'S TYPE. Of 359 font-size
+     declarations in css/, 314 are raw px and 30 go through a var() — there is
+     no root font-size, no rem system, and only 1.6% of all sizing is relative.
+     So a token knob moves the boxes and leaves the text where it was, which is
+     exactly what "everything is still slightly too small" felt like after two
+     passes of raising tokens. `zoom` scales the whole subtree including the
+     hard-coded px, for one declaration.
+     ON .sheet, NOT .screen: .screen carries the safe-area padding, and zooming
+     that would divide the notch inset by the scale and centre the sheet under
+     hardware.
+     NO WIDTH COMPENSATION IS NEEDED, and adding some is a bug. `min(100%, …)`
+     and `max-height: 100%` resolve in the element's OWN (zoomed) space, so the
+     painted box still fits its parent — measured: #sel-inner paints 836px at
+     every scale. What grows is the --sheet-w cap, which is exactly the uplift
+     wanted. Dividing by the scale as well would shrink the sheet as the setting
+     went up.
+     Container queries inside evaluate in the same local space, so `--pair-at`
+     and every `@container sheet` breakpoint keep their meaning: at 130% you
+     need 30% more REAL width to afford two columns, which is the honest answer.
+     A browser without `zoom` renders at 1.0, which is the old behaviour. */
+  /* A dense screen may declare --fit-at (its minimum functional height in
+     LOCAL units). SheetShape then supplies --sheet-scale only when the safe
+     viewport cannot afford the requested UI size. This keeps a 200% preference
+     on roomy screens but prevents chrome from reducing the actual content pane
+     to zero on a short landscape phone. */
+  zoom: var(--sheet-scale, var(--ui-scale));
+  /* The compensated viewport tokens must divide by the zoom this subtree
+     ACTUALLY paints at: the :root family divides by the requested slider,
+     but a --fit-at sheet paints at the capped --sheet-scale — on an 852x393
+     phone at 200% the cap lands ≈1.76, and a `78 * --vwz` button computed
+     against 2.0 painted 12% under-size (29% at the worst cap measured). Same
+     re-derivation the HUD bands do against --hud-z in css/hud.css. */
+  --vwz:  calc(1vw  / var(--sheet-scale, var(--ui-scale)));
+  --vhz:  calc(1vh  / var(--sheet-scale, var(--ui-scale)));
+  --svhz: calc(1svh / var(--sheet-scale, var(--ui-scale)));
+  /* Keep native sliders at 32 painted px when this sheet is fit-capped. */
+  --slider: calc(32px / var(--sheet-scale, var(--ui-scale)));
+  /* The compact tap floor too, at its painted target (css/tokens.css
+     --tap-paint-at): divided by the requested slider, a capped sheet painted
+     QUALIFYING's doors 48 at 150 % on a 734x343 phone. Uncapped, this is the
+     :root/body value exactly. */
+  --tap-paint: max(24px, calc(var(--tap-paint-at) / var(--sheet-scale, var(--ui-scale))));
+  width: min(100%, var(--sheet-w, 520px));
+  max-height: 100%;
+  background: var(--panel);
+  border: 1px solid color-mix(in oklab, var(--red) 28%, var(--card-line));
+  border-radius: var(--r-lg);
+  /* lightness + a top lip do the lifting here; the cast shadow only matters
+     against the 3D scene (see the elevation notes in css/tokens.css) */
+  box-shadow: var(--edge), var(--lift-2);
+  overflow: hidden;
+  /* the query container for every layout decision inside this sheet */
+  container: sheet / inline-size;
+}
+/* Every direct region is a grid item. `min-width:auto` would let any region's
+   max-content width enlarge the implicit sheet column even though the outer
+   card remains viewport-sized. Horizontal strips and wrapping content must
+   negotiate inside the card, never resize the card's track. */
+.sheet > :where(.sheet-head, .sheet-body, .sheet-foot) { min-width: 0; }
+/* Head and foot are CHROME: every pixel they take is a pixel the list below
+   does not get, and on a 393px-tall screen that is the difference between four
+   circuits visible and two. Both are deliberately thin. */
+.sheet-head {
+  padding: calc(var(--pad) * 0.55) var(--pad) calc(var(--pad) * 0.4);
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--gap); flex-wrap: wrap;
+  /* The title band is the top of the stack, so it catches the most light and
+     ends on a hairline — the head used to dissolve into the body with nothing
+     marking where the chrome stopped and the content began.
+     --grad-head adds a brand bleed off the leading edge under that sheen, and
+     the hairline is a FADING rule (--grad-rule painted into the bottom 1px)
+     rather than a flat border: a line that stops dead at both ends draws
+     attention to its own ends, and every one of these sits inside a rounded
+     card where it cannot reach the corner anyway. */
+  background: var(--grad-head);
+  border-bottom: 0;
+  position: relative;
+  /* Broadcast red-line on the leading edge — F1 digital grammar, one accent
+     only (research). Inset so it does not fight the sheet's own border. */
+  box-shadow: inset 3px 0 0 var(--red);
+}
+.sheet-head::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px;
+  background: var(--grad-rule);
+  pointer-events: none;
+}
+/* Title scales with the viewport HEIGHT, which is the axis that is scarce on a
+   phone held sideways — a fixed 24px title costs the same as a row of the list
+   it is sitting above.
+   AND SO IT DOES NOT FOLLOW UI SIZE, WHICH IS THE POINT AND NOT A BUG. `--vhz`
+   is `1vh / --ui-scale` consumed inside `zoom: var(--ui-scale)`, so the scale
+   cancels and the heading is a constant fraction of the SCREEN. MEASURED on a
+   portrait iPhone: 24 / 18 / 13.2 own units at UI SIZE 80 / 100 / 150 — which
+   reads like type that shrinks as you ask for bigger type, and is ~19 PAINTED px
+   at all three. (The 100 -> 150 step also crosses into the compact tier, which
+   drops the ceiling from 24 to 18; that compounds it.)
+   Checked once and nearly "fixed". Do not: every unit given back to this
+   heading comes straight out of the list under it, on exactly the short screens
+   the rule exists for. The clamp's px bounds ARE in own units and do scale, so
+   the heading is never smaller than the floor at any setting. */
+.sheet-head h2 {
+  /* White title + red leading rail (box-shadow on .sheet-head): brand keeps
+     Warm Red scarce — rail/tick/P1 only, not headline ink. */
+  color: var(--text); margin: 0;
+  overflow-wrap: anywhere;
+  font-size: clamp(15px, calc(3.6 * var(--vhz)), 24px);
+  font-weight: 700; font-style: italic;
+  letter-spacing: var(--ls-3);
+  text-transform: uppercase;
+}
+.sheet-body {
+  /* Shrink within the sheet track; the pane owns scrolling and wrapping. */
+  min-width: 0;
+  min-height: 0;
+  padding: calc(var(--pad) * 0.25) var(--pad) calc(var(--pad) * 0.5);
+}
+.sheet-foot {
+  display: flex; align-items: center; gap: var(--gap);
+  /* WRAP, because a footer that does not fit must STACK and never clip. Its
+     buttons carry `min-width: 110px` (below), so they stop shrinking well before
+     they stop overflowing — and every sheet in this app clips (#cs-inner,
+     #sel-inner et al are overflow:hidden), so the part that does not fit is not
+     merely off-screen, it is unreachable. Measured instance: at UI SIZE 100 %
+     and up the garage's pane-pair turns on and its foot drops into a 124 px
+     rail holding 161 px of buttons, and BACK painted at 55 % with nothing to
+     scroll to. The select screen's START does the same in portrait at 150 %.
+     Set on the BASE rather than per screen: there are 21 .sheet-foot instances
+     and four of them carry three or four buttons (quali, career, both tuners),
+     none of which any spec visits — so a per-screen patch fixes the two that
+     were measured and leaves the ones more likely to overflow. Wrapping engages
+     only on overflow, so a footer that fits today is untouched. */
+  flex-wrap: wrap;
+  padding: calc(var(--pad) * 0.35) var(--pad);
+  border-top: 0;
+  position: relative;
+  /* Darker than the body and shaded from the top, so the action bar reads as
+     the plate the sheet stands on rather than one more band of content. */
+  background: linear-gradient(180deg in oklab, color-mix(in oklab, var(--red) 8%, rgba(0, 0, 0, 0.30)), rgba(8, 8, 13, 0.80) 60%);
+}
+/* Shared exits must wrap translated labels inside the available footer. */
+.sheet-foot > :where(button, a) {
+  max-width: 100%; white-space: normal; overflow-wrap: anywhere;
+}
+.sheet-foot::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 1px;
+  background: var(--grad-rule);
+  pointer-events: none;
+}
+/* ---------- the SHORT sheet ---------- */
+/* `data-density` is written by js/game/sheetshape.js from the sheet's height in
+   its OWN units — the header there explains why neither a media query nor the
+   `sheet` container can answer this (one is blind to `zoom`, the other to
+   height). This is the tier that consumes it.
+
+   WHY IT EXISTS. Measured in the garage at 1000x462, head+foot as a share of the
+   sheet: 46% at UI SIZE 100%, 59% at 130%, 68% at 150% — because `zoom` scales
+   padding exactly as fast as it scales text while the sheet's height stays
+   pinned to the viewport. At 150% that left ONE option row on screen. Raising UI
+   SIZE is a request for bigger TEXT, not bigger chrome, so on a short sheet the
+   chrome gives its vertical padding back to the content. Horizontal padding is
+   untouched: width is not the axis that is scarce here, and taking it would
+   re-introduce the truncation this same session spent its time removing. */
+.sheet[data-density="compact"] .sheet-head {
+  padding-top: calc(var(--pad) * 0.28); padding-bottom: calc(var(--pad) * 0.2);
+  gap: calc(var(--gap) * 0.6);
+}
+/* Min 14px: at UI SIZE 90% (.sheet zoom ≈0.9) painted type stays ≥12px. */
+.sheet[data-density="compact"] .sheet-head h2 { font-size: clamp(14px, calc(3 * var(--vhz)), 18px); }
+.sheet[data-density="compact"] .sheet-body { padding-top: 0; padding-bottom: calc(var(--pad) * 0.25); }
+.sheet[data-density="compact"] .sheet-foot { padding-top: calc(var(--pad) * 0.22); padding-bottom: calc(var(--pad) * 0.22); }
+.sheet-foot .bigbtn {
+  width: auto; min-width: min(100%, 110px); margin: 0; flex: 1 1 0;
+  /* same reasoning as the title: on a 393px-tall screen a 20px/14px button is
+     ~54px of the ~230px the content has to live in.
+     Floor 14px so 90% UI zoom still clears the 12px visual type floor. */
+  font-size: clamp(14px, calc(3.6 * var(--vhz)), 20px);
+  /* --vhz like the font-size above — same zoomed element, one line apart.
+     Leading-edge +4px so the skewed label stays optically column-centred. */
+  padding: clamp(7px, calc(1.8 * var(--vhz)), 14px) 14px clamp(7px, calc(1.8 * var(--vhz)), 14px) 18px;
+}
+/* A lone BACK / DONE / CLOSE is not a banner. Pairs (BACK + RACE!) still
+   share the foot 1:1 via flex-grow.
+   Dismiss rank: same body as the primary (skew, type, height), alt plate.
+   BACK = return to a parent sheet. CLOSE = overlay on something still
+   visible. DONE / APPLY / SAVE / RACE! stay the red primary (a commit).
+   A lone dismiss is never the red fill — How to Play's old DONE and
+   Standings' old CLOSE read as commit when they only leave. */
+.sheet-foot .bigbtn:only-child {
+  flex: 0 1 auto;
+  width: auto;
+  margin-inline: auto;
+}
+/* ---------- pane: a scroll region ---------- */
+.pane {
+  min-width: 0; min-height: 0;
+  scroll-padding-block: var(--gap);
+  overflow-y: auto;
+  /* overflow-x is pinned to hidden ON PURPOSE. Setting only overflow-y computes
+     the other axis from `visible` to `auto`, which quietly makes the region
+     horizontally scrollable — one over-wide child then drags the whole column
+     sideways and content disappears behind the edge. */
+  overflow-x: hidden;
+  /* stop a flick at the end of a list from chaining into whatever is behind it */
+  overscroll-behavior-y: contain;
+  /* reserve the desktop scrollbar so content does not jump sideways the moment
+     a list grows past its box */
+  scrollbar-gutter: stable;
+  touch-action: pan-y;
+}
+/* .sf-t / .sf-b / .sf-l / .sf-r are set by js/game/scrollfade.js on panes
+   that still have content hidden on that edge. No class = no mask, so a pane
+   whose content fits is never faded: the fade always means something. */
+.sf-t, .sf-b, .sf-l, .sf-r {
+  --sfade-t: 0px; --sfade-b: 0px; --sfade-l: 0px; --sfade-r: 0px;
+  mask-image:
+    linear-gradient(to bottom,
+      transparent 0, #000 var(--sfade-t),
+      #000 calc(100% - var(--sfade-b)), transparent 100%),
+    linear-gradient(to right,
+      transparent 0, #000 var(--sfade-l),
+      #000 calc(100% - var(--sfade-r)), transparent 100%);
+  mask-composite: intersect;
+  -webkit-mask-image:
+    linear-gradient(to bottom,
+      transparent 0, #000 var(--sfade-t),
+      #000 calc(100% - var(--sfade-b)), transparent 100%),
+    linear-gradient(to right,
+      transparent 0, #000 var(--sfade-l),
+      #000 calc(100% - var(--sfade-r)), transparent 100%);
+  -webkit-mask-composite: source-in;
+}
+/* 36px, raised from 26 after two judge panels read the fade as "the container
+   clipped my content": at ~⅔ of one 40px row, a pure alpha ramp on a dark
+   plate over a dark sheet was under the noise floor. A fade close to one full
+   row is what converts "cut off" into "continues below". */
+.sf-t { --sfade-t: 36px; }
+.sf-b { --sfade-b: 36px; }
+.sf-l { --sfade-l: 36px; }
+.sf-r { --sfade-r: 36px; }
+
+/* ---------- scroll POSITION INDICATOR ----------
+   A scrollbar thumb down the right edge, like a web page has. The fade above
+   only ever says "there is more"; this says how much and where you are, and it
+   stays put instead of appearing for half a second mid-flick the way the
+   platform's own overlay scrollbar does on a phone.
+
+   ScrollFade sets --sf-h (thumb height) and --sf-y (its offset down the track)
+   on every scrollable region; everything here is just drawing.
+
+   Mechanics that matter:
+   * `position: sticky` — a pseudo-element is the first IN-FLOW child, so sticky
+     is what pins it to the scrollPORT rather than letting it scroll away with
+     the content. `top: var(--sf-y)` is then the thumb's travel: JS moves it
+     down the track as scrollTop grows. Absolute positioning could not do this
+     without adding a wrapper element around every panel.
+   * `margin-bottom: calc(-1 * var(--sf-h))` cancels the thumb's own height, so
+     it never grows scrollHeight — which ScrollFade measures, and which would
+     otherwise let a panel conclude it was scrollable because of its own
+     indicator.
+   * `grid-column: 1 / -1` because several of these regions are grids
+     (#sel-teams, #cz-body, #cs-tabs, the HOW TO PLAY <dl>); without it the
+     pseudo-element takes a cell and shoves a real item out of place. Inert in
+     flex and block containers. */
+.sf-scroll::before {
+  content: "";
+  position: sticky;
+  top: var(--sf-y, 0px);
+  z-index: 3;
+  display: block;
+  grid-column: 1 / -1;
+  width: 6px;
+  height: var(--sf-h, 24px);
+  /* NEVER SHRINK. In a flex-column scroll region (#cs-options, .dh-content) the
+     thumb is a flex ITEM, and flex-shrink defaults to 1 — so with 891px of
+     options in a 231px box the algorithm squeezed the 60px thumb down while its
+     -60px cancelling margin stayed put. The item's OUTER height went negative
+     and dragged every sibling up with it: CAR SETUP's first part option sat
+     16.8px above the top of its own scrollport, clipped, at scrollTop 0.
+     (Measured, then confirmed by disabling this pseudo-element: the option
+     snapped back to exactly padding-top.) */
+  flex: 0 0 auto;
+  margin-left: auto; margin-right: 2px;
+  margin-bottom: calc(-1 * var(--sf-h, 24px));
+  border-radius: var(--r-xs);
+  background: var(--accent);
+  /* 0.8, raised from 0.55: dark red at 55% on a dark panel was below the
+     noise floor of the UI — and for most of this indicator's life it also
+     never moved (the sf token registration severed its var() access, fixed
+     in the same round), so nobody had ever judged it at its real job. */
+  opacity: 0.8;
+  pointer-events: none;
+}
+/* Give the thumb its own LANE inside a sheet body's right padding. `margin-left:
+   auto` parks it on the CONTENT box edge, which is also where the right-hand
+   column's control ends — so on MY TEAM the indicator painted a red sliver
+   across the corner of the PRIMARY colour well and read as a rendering
+   artifact. Every .sheet-body carries --pad of right padding that nothing else
+   uses; a negative margin moves the thumb into it without shifting a single
+   pixel of content. Scoped to .sheet-body on purpose: a region with no padding
+   (the bare track/team lists) would push the thumb past its own scrollport and
+   have it clipped away. */
+.sheet-body.sf-scroll::before { margin-right: calc(6px - var(--pad)); }
+/* EVERY SCROLLER GETS THE LANE, not only .sheet-body. The Data Hub's
+   .dh-content, the MUSIC & SOUND panel and every other padded region still
+   parked the thumb on the content edge, where it covered the right 8px of a
+   select, a row, a paragraph (390px phone, 2026-09-30). ScrollFade measures
+   each region's right padding into --sf-pr; the thumb moves into it and sits
+   a sixth of --gap (~2px) in from the padding edge. A region with no padding measures 0 and keeps
+   the old placement, so nothing is pushed past its own scrollport. */
+.sf-scroll:not(.sheet-body)::before { margin-right: calc(var(--gap) / 6 - var(--sf-pr)); }
+/* NO THUMB ON THE TITLE SCREEN. #overlay's children are all grid-PLACED, so the
+   auto-placed pseudo-element lands in a trailing row below the content, where
+   its cancelling margin cancels nothing: its box grows scrollHeight, and its
+   height is computed FROM scrollHeight. Measured 2026-09-29: a title screen
+   left scrollable by its own thumb after a rotation (430px landscape, 654
+   tall), and at UI SIZE 130 % on a 320x568 phone scrollTop jittering 342/343
+   every repaint, so HELP never held still long enough to tap. Hiding the thumb
+   there for one read clamped the reader back to the top instead. The fades
+   (sf-t / sf-b) still say "there is more"; the doors are the position.
+
+   #menu-buttons is the REAL title scroller (zoom rides `#overlay > *`, so
+   #overlay's own overflow-y is mostly a dead letter). Its children are also
+   grid items, and on a narrow landscape column (568×320, UI 130 %) the 6px
+   accent thumb had no .sheet-body padding lane to sit in — it painted a red
+   strip down the door edges and clipped CAREER / DAILY labels. Same hide,
+   same fades-still-say-more contract. */
+#overlay.sf-scroll::before,
+#menu-buttons.sf-scroll::before { display: none; }
+
+/* ---------- STATE HAS DURATION ----------
+   Selection used to be instant everywhere: tap a chip and the ring simply
+   existed, with nothing connecting the tap to the result. Instant is not the
+   same as responsive — a state that arrives over ~140ms reads as the interface
+   answering you, where a state that teleports reads as a repaint.
+
+   Colour and shadow only. The press NUDGE is a separate rule below because it
+   is the one part of this that is movement, and movement is what
+   prefers-reduced-motion is actually about. */
+.sel-chip, .opt-btn, .preset-btn, .cz-liv-none,
+.track-row, .team-tile, .season-upcoming-row,
+.cs-tab, .cs-opt, .lt-tab,
+.dh-tab, .dh-pill, .dh-dchip, .dh-sortbtn, .dh-row {
+  transition:
+    background-color 0.14s ease, background 0.14s ease,
+    border-color 0.14s ease, box-shadow 0.14s ease, color 0.14s ease;
+}
+@media (prefers-reduced-motion: no-preference) {
+  /* 1px of travel under the finger. Enough to feel; not enough to reflow. */
+  .sel-chip:active, .opt-btn:active, .preset-btn:active,
+  .cz-liv-none:active, .cs-opt:active, .lt-tab:active,
+  .dh-tab:active, .dh-pill:active, .dh-dchip:active {
+    transform: translateY(1px);
+  }
+  /* .sel-chip / .dh-tab: their own sheets restate the transition with transform. */
+  .opt-btn, .preset-btn, .cz-liv-none,
+  .cs-opt, .lt-tab, .dh-pill, .dh-dchip {
+    transition:
+      background-color 0.14s ease, background 0.14s ease,
+      border-color 0.14s ease, box-shadow 0.14s ease, color 0.14s ease,
+      transform 0.08s ease;
+  }
+}
+
+/* ---------- BALANCED CONTROL ROWS ----------
+   A control group must answer the room it actually gets, not a remembered
+   device width or a child count baked into `repeat(3, ...)`. Flex line packing
+   already has the desired invariant: every item on a line grows by the same
+   amount, so a lone final control becomes a deliberate full-width action while
+   two or more share the line evenly. Hidden/runtime-added controls participate
+   automatically and no `:nth-child(3n + 1)` variant can drift from the column
+   count selected somewhere else.
+
+   --balance-basis is the preferred local width at which a new line becomes
+   useful; --balance-min may be smaller when a family can safely compress. A
+   group that must remain one equal row sets both to 0px, still without knowing
+   how many children JavaScript will add. */
+.balanced-row {
+  display: flex;
+  flex-wrap: wrap;
+}
+.balanced-row > :not([hidden]) {
+  flex: 1 1 var(--balance-basis, 8rem);
+  min-width: min(100%, var(--balance-min, var(--balance-basis, 8rem)));
+}
+
+/* ---------- buttons ---------- */
+.bigbtn {
+  display: block;
+  /* --vwz, not bare vw: .bigbtn lives inside .sheet and inside #overlay > *,
+     both of which are zoomed. See the note in tokens.css. */
+  width: min(calc(78 * var(--vwz)), 340px);
+  /* WCAG conformance floor, zoom-honest: padding gives these ~40px at 100%,
+     but at UI SIZE 40% RESUME painted 18px tall (2026-08-21 sweep, pause and
+     advanced @40 on every viewport). --tap-min is 24 local px at <=100% —
+     under every existing button height, so nothing moves — and grows as the
+     zoom shrinks so the PAINTED box never drops below 24px. */
+  min-height: var(--tap-min);
+  margin: 10px auto;
+  /* on the height ladder (css/tokens.css). The padding alone happened to land
+     these on --tap at most sizes and a pixel or two off at others; stating the
+     floor means a font-size override can never quietly shrink a primary
+     button below the rest of its row. */
+  min-height: var(--tap);
+  /* Optical centre under skewX(-6deg): the parallelogram drifts left, so
+     bias padding toward the leading edge so the label reads column-centred. */
+  padding: 14px 18px 14px 22px;
+  font-size: var(--fs-6);
+  font-weight: 700;
+  letter-spacing: var(--ls-2);
+  color: var(--text);
+  background: var(--grad-primary);
+  border: none;
+  border-radius: var(--r-md);
+  transform: skewX(-6deg);
+  /* A button is a physical object, and one drop shadow cannot say so. Four
+     stops, each doing one job:
+       inset top     a lit lip along the leading edge — the thing that makes a
+                     flat fill read as a raised surface on a dark page
+       inset bottom  the far edge falling into its own shade
+       tight cast    a 2px core directly under it: "this is off the page"
+       wide glow     the red bloom it already had: "and it is the hot one" */
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.30),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.32),
+    0 2px 4px rgba(0, 0, 0, 0.45),
+    0 6px 22px color-mix(in oklab, var(--red) 46%, transparent);
+  transition: background 0.14s, box-shadow 0.14s, transform 0.1s;
+  /* the sweep below is clipped to the button's own rounded box */
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+/* ---------- specular sweep ----------
+   A narrow band of light crossing the face. It is what a moulded, glossy object
+   does when it or the light moves, and on the one button that says RACE it is
+   worth the four lines.
+   The band is painted as a gradient positioned by --sheen, and --sheen is a
+   REGISTERED <percentage> (css/tokens.css) — that registration is the whole
+   trick, because a gradient is not animatable but a typed custom property
+   inside one is. */
+.bigbtn::after {
+  content: "";
+  position: absolute; inset: 0; z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(105deg in oklab,
+    transparent calc(var(--sheen) - 14%),
+    rgba(255, 255, 255, 0.30) var(--sheen),
+    transparent calc(var(--sheen) + 14%));
+}
+@media (prefers-reduced-motion: no-preference) {
+  @media (hover: hover) and (pointer: fine) {
+    .bigbtn:is(:hover, :focus-visible)::after { animation: sheen 0.62s cubic-bezier(0.3, 0, 0.2, 1); }
+  }
+  /* The hero (CAREER, the one solid-red door) catches the light ONCE, just
+     after it lands in the title intro (css/menus.css) — scoped to one button
+     because a menu where everything shimmers has no focal point. It sat on
+     RACE until RACE became a dark plate; a sweep of white over a plate reads
+     as a glitch, over the red face as gloss. Keyed on #overlay[data-intro]
+     like the rest of the intro: the first show only, never again on the way
+     back from a room (js/ui/title-fx.js owns the attribute).
+     Once, NOT on a loop. An infinite sweep animates a registered custom
+     property inside a gradient, which means repainting the button every frame
+     for as long as the menu is open — a permanent 60fps cost on a phone for a
+     decoration, and it never lets the compositor reach a stable frame (it hung
+     the screenshot tooling, which is how it was caught). */
+  :root:not([data-motion="reduce"]):not([data-title-intro="off"]) #overlay[data-intro] #mb-career::after { animation: sheen 0.85s 0.5s cubic-bezier(0.3, 0, 0.2, 1) both; }
+}
+@keyframes sheen {
+  from { --sheen: -30%; }
+  to   { --sheen: 130%; }
+}
+/* Hover gated on a hover-capable pointer (see css/tokens.css); :active is the
+   press state — this layer outranks the base button:active, so without these
+   the big menu buttons had NO press feedback on touch. */
+@media (hover: hover) and (pointer: fine) {
+  .bigbtn:is(:hover, :focus-visible) {
+    background: var(--grad-primary-hot);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.38),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.32),
+      0 3px 6px rgba(0, 0, 0, 0.45),
+      0 10px 32px color-mix(in oklab, var(--red) 62%, transparent);
+  }
+}
+/* Pressed = the light moves. The lit lip goes out, an inner shadow drops in
+   from the top as if the face has sunk below its own edge, and the cast shadow
+   collapses because the object is closer to the page. Scale alone reads as a
+   picture shrinking; this reads as a key travelling. */
+.bigbtn:active {
+  background: var(--grad-primary-hot);
+  box-shadow:
+    inset 0 2px 5px rgba(0, 0, 0, 0.45),
+    0 1px 2px rgba(0, 0, 0, 0.4),
+    0 2px 12px color-mix(in oklab, var(--red) 42%, transparent);
+  transform: skewX(-6deg) scale(0.97);
+}
+/* Secondary buttons are raised surfaces, not outlines: a lightness step off the
+   sheet plus the top lip, which is what makes a control look pressable on a
+   dark background (an unfilled border alone reads as a disabled field). */
+.bigbtn.alt {
+  background: var(--plate-opaque); color: var(--text);
+  border: 1px solid color-mix(in oklab, var(--steel) 42%, transparent);
+  font-weight: 600;
+  letter-spacing: var(--ls-1);
+  /* Flat plate, same as the settings tab headers — not a lighter raised slab. */
+  box-shadow: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .bigbtn.alt:is(:hover, :focus-visible) {
+    background: var(--plate-hover);
+    color: var(--text);
+    border-color: var(--plate-line);
+    box-shadow: none;
+  }
+}
+.bigbtn.alt:active {
+  background: var(--plate-press);
+  box-shadow: none;
+}
+
+/* Tap targets. Listed by control class rather than a blanket `.panel button`
+   so the deliberately dense LIGHTING TUNER rows keep their own sizing. */
+.bigbtn, .sel-edit,
+.sheet-body > button, .pm-group button, .pm-doors button,
+#advanced-inner :is(.opt-btn, .preset-btn),
+.cs-tab, .cs-opt, #campicker button, .cs-unlimited-btn, .adv-more-btn {
+  min-height: var(--tap);
+  /* Width floor is the WCAG minimum only, not --tap: these sit in shared
+     rows where a 44px width floor would force wraps, but at UI SIZE 40% the
+     4-across steer-mode row painted 22px-wide targets (2026-08-21 sweep,
+     advanced @40 on every viewport). 24 local px at <=100% is under every
+     current width, so nothing moves. */
+  min-width: var(--tap-min);
+}
+/* Chips are text-sized boxes: they need the centring, and a one-character
+   label ("3", "5" laps) still needs a thumb-sized box. */
+.sel-chip, .sel-edit {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: var(--chip-h); min-width: var(--chip-h);
+}
+
+/* prefers-reduced-transparency / prefers-contrast: solid sheets over the moving
+   3D scene. LAST in the file on purpose: same layer and specificity as `.sheet`
+   above, so only order wins. `.dh-card` (css/data.css) and `.screen.dim`
+   (css/dialogs.css) restate this after their own base rules; the cascade test
+   fails if any such block goes dead. */
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .sheet { background: var(--surf-1); }
+}
+/* TOUCH: ranges, selects and disclosure rows reach the painted tap floor
+   (#2158: #pm-pace / #sp-vol 32 tall, the Spotify selects 40, EXTRA PAINT and
+   EXTRA FUNDS summaries 37 and 27 at 844x390). Only the hit box grows: the
+   native range track and thumb keep their size, centred in it. The dev tuner
+   panels keep their dense rows (they fit a docked panel beside the car). */
+@media (pointer: coarse) {
+  :is(input[type="range"], select):not(:is(#lighting, #camtune, #flyby, #freecam, #garrival) *) {
+    height: var(--tap-paint); min-height: var(--tap-paint);
+  }
+  summary:not(:is(#lighting, #camtune, #flyby, #freecam, #garrival) *) {
+    min-height: var(--tap-paint); align-content: center; box-sizing: border-box;
+  }
+}
+} /* @layer components */
