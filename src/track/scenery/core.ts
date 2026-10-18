@@ -166,9 +166,20 @@ export interface SplineCore {
   };
 }
 
+/**
+ * A built surface profile (`track.surface`). f1-game js/track/core/surface.js:34-172
+ * (`profile` returns `p`); build-props.js:615-617 calls `heightAt(k, dist, side)`
+ * and hands `rails` to TrackModels.create (:638).
+ */
+export interface SurfaceProfile {
+  heightAt(k: number, lateralDistance: number, side?: number): number;
+  /** TODO(scenery models port): type the rail record models.js reads. */
+  readonly rails: unknown;
+}
+
 /** f1-game js/track/core/surface.js:180 (`TrackSurface`). */
 export interface SurfaceCore {
-  profile(def: SpaceDef, track: BuildTrack): unknown;
+  profile(def: SpaceDef, track: BuildTrack): SurfaceProfile;
   heightAt(surface: unknown, k: number, lateralDistance: number): number;
 }
 
