@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Apex 26</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #0b0d12; color: #e8eaf0; font: 14px/1.4 system-ui, sans-serif; overflow: hidden; }
+      #game { display: block; width: 100vw; height: 100vh; }
+      #backend { position: fixed; top: 8px; left: 8px; padding: 2px 8px; border-radius: 4px; background: rgb(0 0 0 / 0.5); }
+    </style>
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+    <div id="backend" data-backend="">booting…</div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
