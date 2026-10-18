@@ -386,8 +386,7 @@ export interface CreateHooks {
 }
 /** f1-game's TrackDesigner, as this file calls it. */
 export interface TrackDesignerHooks {
-  // TODO(lane-shell): type `custom` as CustomTracksApi once the designer lands (a direct reference is circular).
-  init?(G: GameFacade | null, opts: { custom: unknown }): void;
+  init?(G: GameFacade | null, opts: { custom: CustomTracksApi | null }): void;
   open(opts?: { resume?: TestReturn; design?: CustomDesign; shared?: boolean }): void;
   placeTest?(r: TestReturn): void;
 }

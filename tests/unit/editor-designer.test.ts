@@ -128,8 +128,7 @@ function bootScreen(stored: Record<string, unknown> = {}, opts: { store?: Editor
   const C0 = createCustomTracks(store, {
     trackList: () => list,
     setCustomTail: (defs) => { list.splice(SHIPPED, list.length - SHIPPED, ...defs); },
-    // TODO(lane-shell): custom-tracks.ts TrackDesignerHooks types init's opts as { custom: unknown }; the handle takes CustomTracksApi.
-    designer: () => D as unknown as CustomTracksMod.TrackDesignerHooks,
+    designer: () => D,
     codec: () => TrackCodec,
     roster: { LAZY_EDITOR: ["src/editor/designer.ts"], LAZY_EDITOR_EDGES: [] },
     location: () => loc,

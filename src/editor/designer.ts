@@ -20,7 +20,9 @@
  * - Every global designer.js reads that is not an editor module arrives through
  *   `DesignerDeps` (GameStore.store, CustomTracks, GameAudio, the `_G` façade,
  *   Log, ApexClipboard, NativeDownload, Flags, TrackMaps, Tracks.LIST's custom
- *   tail, and the #mb-race / #mb-tt title doors).
+ *   tail, and the #mb-race / #mb-tt title doors). `mount` defaults `trackMaps` to
+ *   the ported src/track/maps/track-maps.ts and injects it into validate.ts
+ *   (setTrackMaps) while mounted, as f1-game's browser always loads TrackMaps.
  * - Editor modules are static imports, so their `typeof X !== "undefined"`
  *   guards (ElevPresets, TrackDesignerProps, TrackInsight, TrackFixes,
  *   DesignerProfile, TrackShape, CustomTracks.KERB_STYLES / sanitizeHeights)
@@ -59,6 +61,7 @@ import * as TrackValidate from "./validate";
 import type { Issue, Stats } from "./validate";
 import * as DesignerWorkspace from "./workspace";
 import type { BuiltDef } from "../track/core/def";
+import * as TrackMaps from "../track/maps/track-maps";
 import * as Tracks from "../track/core/tracks";
 import type { Track } from "../track/core/types";
 
@@ -123,7 +126,7 @@ export interface DesignerDeps {
   nativeDownload?: { viable?(): boolean; saveBlob?(blob: Blob, name: string): unknown } | null;
   /** Flags: the country picker's names (designer.js:1164, typeof-guarded). TODO(lane-shell) */
   flags?: { countries(): readonly string[]; code(name: string): string | null | undefined } | null;
-  /** TrackMaps (js/ui/track-maps.js): library thumbnails and the card's ink (designer.js:1604, :2370). TODO(lane-shell) */
+  /** TrackMaps (js/ui/track-maps.js): library thumbnails and the card's ink (designer.js:1604, :2370). mount() defaults it to src/track/maps/track-maps.ts. */
   trackMaps?: { draw?(c: HTMLCanvasElement, def: BuiltDef, opts: { width: number; color: string }): void; themeColor?(def: unknown): string | null | undefined } | null;
 }
 
@@ -2790,9 +2793,19 @@ export function mount(el: HTMLElement, deps: DesignerDeps): DesignerHandle {
     head.append(h2, close);
     el.appendChild(head);
   }
+  // f1-game's browser always loads js/ui/track-maps.js: the mounted screen gets the
+  // ported TrackMaps for its thumbnails and card ink, and validate.ts gets it for
+  // bakeTurns / insight's classes. The unmounted default stays TrackMaps-less (the
+  // goldens' headless VM); destroy() puts back whatever was injected before.
+  if (!deps.trackMaps) deps = Object.assign({}, deps, { trackMaps: TrackMaps });
+  const priorMaps = TrackValidate.getTrackMaps();
+  TrackValidate.setTrackMaps(TrackMaps);
   const d = createDesigner(deps);
   const handle: DesignerHandle = Object.freeze(Object.assign({}, d, {
-    destroy() { d.destroy(); if (current === handle) current = null; },
+    destroy() {
+      d.destroy();
+      if (current === handle) { current = null; if (TrackValidate.getTrackMaps() === TrackMaps) TrackValidate.setTrackMaps(priorMaps); }
+    },
   }));
   current = handle;
   handle.init(deps.game || null, { custom: deps.custom || null, root: el });
