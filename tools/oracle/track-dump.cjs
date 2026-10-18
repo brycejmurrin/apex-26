@@ -20,11 +20,29 @@ const opt = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args.splice(i
 const F1 = path.resolve(opt("--f1", process.env.F1_GAME || path.join(__dirname, "../../../f1-game")));
 const OUT = path.resolve(opt("--out", path.join(__dirname, "../../tests/goldens")));
 const N = Number(opt("--samples", "2000"));
-const ids = args.length ? args : ["monza"];
+const ALL = args.includes("--all") ? (args.splice(args.indexOf("--all"), 1), true) : false;
+const SKIP = (opt("--skip", "") || "").split(",").filter(Boolean);
+let ids = args.length ? args : ["monza"];
 const XS = [-1, -0.5, 0, 0.5, 1];
 
 const { buildContext } = require(path.join(F1, "tools/track/verify-track.cjs"));
 const Tracks = buildContext(null, { quiet: true });
+if (ALL) ids = Tracks.LIST.map((d) => d.id).filter((id) => !SKIP.includes(id));
+// Record every gfx.createMesh call the build makes: order, lengths and a sha256 of each
+// buffer (pos/nrm/col as Float64 little-endian, idx/mat as Uint32), so the port can prove
+// buffer parity without shipping the buffers.
+const ctx = Tracks._vmContext;
+let meshLog = null;
+const origCreate = ctx.GLX.createMesh;
+const h = (arr, T) => (arr ? crypto.createHash("sha256").update(Buffer.from(T.from(arr).buffer)).digest("hex") : null);
+ctx.GLX.createMesh = function (buf) {
+  if (meshLog) meshLog.push({
+    verts: buf && buf.pos ? buf.pos.length / 3 : 0, idx: buf && buf.idx ? buf.idx.length : 0,
+    pos: h(buf && buf.pos, Float64Array), nrm: h(buf && buf.nrm, Float64Array), col: h(buf && buf.col, Float64Array),
+    idxHash: h(buf && buf.idx, Uint32Array), mat: h(buf && buf.mat, Uint32Array),
+  });
+  return origCreate.apply(this, arguments);
+};
 let sha = "unknown";
 try { sha = execSync("git rev-parse HEAD", { cwd: F1 }).toString().trim(); } catch (_) {}
 
@@ -42,7 +60,9 @@ fs.mkdirSync(OUT, { recursive: true });
 for (const id of ids) {
   const def = Tracks.LIST.find((d) => d.id === id);
   if (!def) throw new Error(`unknown track ${id}`);
+  meshLog = [];
   const track = Tracks.build(def, {});
+  const meshes = meshLog; meshLog = null;
   const L = track.total;
   const queries = [];
   for (let i = 0; i < N; i++) {
@@ -67,9 +87,10 @@ for (const id of ids) {
     arrays: typed(track),
     pit: track.pit ? { scalars: scalars(track.pit), arrays: typed(track.pit) } : null,
     bankP: track.bankP ? typed(track.bankP) : null,
+    meshes,
     queries,
   };
   const file = path.join(OUT, `track-${id}.json.gz`);
   fs.writeFileSync(file, zlib.gzipSync(JSON.stringify(doc), { level: 9 }));
-  console.log(`${id}: n=${track.n} total=${L.toFixed(1)} arrays=${Object.keys(doc.arrays).length} → ${path.relative(process.cwd(), file)} ${(fs.statSync(file).size / 1024).toFixed(0)} KB`);
+  console.log(`${id}: n=${track.n} total=${L.toFixed(1)} arrays=${Object.keys(doc.arrays).length} meshes=${meshes.length} → ${path.relative(process.cwd(), file)} ${(fs.statSync(file).size / 1024).toFixed(0)} KB`);
 }
