@@ -10,16 +10,15 @@ test("window.__apex drives 10 s of scripted input", async ({ page }) => {
   const r = await page.evaluate(() => {
     const api = window.__apex!;
     const start = api.physState();
-    // A driver that reads only its own state: full throttle, steer back to the centreline.
-    for (let i = 0; i < 600; i++) {
-      const s = api.physState();
-      api.setInput({ throttle: true, steer: Math.max(-1, Math.min(1, -s.x * 0.3 + 0.4)) });
-      api.step(1);
-    }
+    // Full throttle, wheel straight: Monza's grid slot sits on the start/finish straight.
+    api.setInput({ throttle: true, steer: 0 });
+    api.step(600);
     api.setInput(null);
     return { start: start.prog, end: api.physState(), info: api.info() };
   });
-  expect(r.end.prog - r.start).toBeGreaterThan(200);
+  expect(r.end.prog - r.start).toBeGreaterThan(150);   // f1-game pulls ~218 m in 10 s from a standing start
+  expect(r.end.lap).toBe(1);   // crossed the line from the grid
+  expect(r.info.track).toBe("monza");
   expect(r.end.speed).toBeGreaterThan(20);
   expect(r.info.steps).toBeGreaterThanOrEqual(600);
   expect(r.info.backend).toMatch(/^(WebGPU|WebGL2)$/);

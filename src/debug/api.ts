@@ -19,6 +19,7 @@ export interface ApexInfo {
   readonly reason: string;
   readonly track: string;
   readonly trackLength: number;
+  readonly raceT: number;
   readonly simT: number;
   readonly steps: number;
   readonly paused: boolean;
@@ -63,13 +64,14 @@ export function completeInput(p: Partial<PlayerInput>): PlayerInput {
 }
 
 export function createDebugApi(app: App, backend: { name: string; reason: string }, trackId: string): ApexDebug {
-  const physState = (): ApexPhysState => ({ ...app.player, lapLast: app.timer.last, lapBest: app.timer.best });
+  const physState = (): ApexPhysState => ({ ...app.player, lapLast: app.player.lastLap ?? Number.NaN, lapBest: app.player.best });
   return {
     info: () => ({
       backend: backend.name,
       reason: backend.reason,
       track: trackId,
       trackLength: app.track.length,
+      raceT: app.world.raceT,
       simT: app.simT,
       steps: app.stepCount,
       paused: app.paused,
