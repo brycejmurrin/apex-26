@@ -1,0 +1,237 @@
+@layer hud {
+/* Perf overlay styles. Ported verbatim from f1-game css/hud.css:1509-1665 (#game-metrics),
+   :1952 and :1955-1964 (hide with the HUD) and :2462-2476 (#phone-rec-badge, #pm-phonerec),
+   all in f1-game's `hud` layer; the METRICS settings fold from css/settings-controls.css
+   :309-314 and :364-432 sits in the `components` layer below, as it did there. Tokens
+   (--gap, --plate-opaque, --faster, --fs-micro, ...) come from src/styles/tokens.css, which
+   ./index.ts imports first. js/perf/ paths in the comments now read src/perf/. */
+/* ---------- in-game metrics overlay (src/perf/metrics-overlay.ts) ---------- */
+/* Position is data-pos=left|right (AUTO resolves in JS). Left is the
+   phone-landscape default so the panel cannot sit on BRAKE/GAS. Dock
+   clearance is the bottom budget — the old 80px floor still overlapped
+   the right pedals at HUD 145%. */
+#game-metrics {
+  --gm-top: calc(12px + var(--sat, 0px) + min(120px, calc(80px * var(--hud-z-top, var(--hud-scale, 1)))));
+  --gm-dock: max(120px, calc(80px * var(--hud-z-dock, var(--hud-scale, 1)) + var(--sab, 0px)));
+  /* THE BAND SCALE THIS PANEL LIVES IN — the same expression --gm-top above
+     already uses to POSITION itself, and the same one metricsRatio() reads in
+     src/perf/metrics-overlay.ts to choose the narrow vs wide layout. Sharing it
+     is the point: size, position and layout cannot then disagree about how big
+     the HUD is. The CAPPED --hud-z-top rather than the raw slider, because on a
+     screen too tight for the request fitHud has already shrunk the band, and a
+     panel that kept the full request would overrun a HUD that gave way.
+     MEASURED before this at 1280x720, HUD SIZE 60/100/150: the panel's top
+     tracked the slider — 104 / 136 / 176 px — while its font stayed 14px and
+     its bar buttons stayed 30px at every setting. BUTTON SIZE 60% moved
+     neither, and --hud-btn-scale read 0.6 with nothing consuming it. The panel
+     MOVED for the HUD and never RESIZED with it, which is the whole defect. */
+  --gm-z: var(--hud-z-top, var(--hud-scale, 1));
+  /* BUTTON SIZE reaches this panel's own chips, as it already reaches the
+     dock's (css/overlays.css). MULTIPLIED, not divided: nothing zooms this
+     subtree, so these resolve straight to painted pixels — the shared tokens
+     divide because they sit inside a zoom, and copying that here would shrink
+     the chips as the setting went up. The 24px WCAG 2.5.8 AA floor stays
+     OUTSIDE the multiply so lowering the setting can never cross it. At 100%
+     both are byte-identical to the tokens they shadow (30px and 24px). */
+  --tap-sm: max(24px, calc(30px * var(--hud-btn-scale, 1)));
+  --tap-min: max(24px, calc(24px * var(--hud-btn-scale, 1)));
+  position: fixed;
+  z-index: 11;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: calc(var(--gap) * 0.4) calc(var(--gap) * 0.55);
+  /* FLOORED, for the same reason --tap-sm above is. Scaling alone regressed the
+     small end: MEASURED at HUD SIZE 60% this painted 8.4px (14 x 0.6), where
+     the UNSCALED panel had been a legible 14 — a player who wants a small HUD
+     was handed an unreadable one, which is a worse bug than the one being
+     fixed. 12px is the visual floor css/tokens.css states for this tree (its
+     --fs-micro sits at 14 only because the menu sheets paint inside a 0.9
+     zoom; nothing zooms this panel, so CSS px are painted px here and 12 is 12).
+     Outside the multiply, so the floor cannot itself be scaled away.
+     At 100% max() picks 14 and the panel is byte-identical to before. */
+  font: max(12px, calc(var(--fs-micro) * var(--gm-z)))/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--faster);
+  background: var(--plate-opaque);
+  border: 1px solid var(--plate-line);
+  border-radius: var(--r-sm);
+  pointer-events: auto;
+  text-align: left;
+  /* WIDE ENOUGH TO SHOW THE LINES IT EMITS. MEASURED, both viewports, with a
+     20-character probe in the body's own font (ch is 8.57px at 14, 7.35 at 12):
+       narrow layout  longest line 25 ch  ->  needs 171-214 px
+       wide   layout  longest line 52 ch  ->  needs 242-446 px
+       boxes were      s 170 / m 221 / l 322 px on desktop
+                       s 111 / m 134 / l 189 px on a 393 phone
+     Seven of nine desktop cases and all nine phone cases CUT — white-space:pre
+     inside overflow:hidden, so the tail was lost, not scrolled, and no test
+     looked because the sweep only ever checked scrollHeight.
+     So the steps are now sized in the units the CONTENT is measured in: S holds
+     the narrow layout, L holds the wide one, M sits between. +2ch over the
+     content figure absorbs this element's own padding and border (measured at
+     15.4px, ~1.8ch). 92vw is the upper bound so a step can still never eat the
+     display; on a phone it wins for L, which is why the layout picker in
+     src/perf/metrics-overlay.ts must also decide on FIT rather than on a
+     viewport proxy — the two halves only work together. */
+  width: min(28ch, 92vw);
+  max-height: min(28svh, calc(100svh - var(--gm-top) - var(--gm-dock)));
+  overflow: hidden;
+  resize: both;
+  overscroll-behavior-y: contain;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+  letter-spacing: 0.01em;
+}
+#game-metrics[data-size="m"] {
+  width: min(42ch, 92vw);
+  max-height: calc(100svh - var(--gm-top) - var(--gm-dock));
+}
+#game-metrics[data-size="l"] {
+  width: min(56ch, 92vw);
+  max-height: calc(100svh - var(--gm-top) - var(--gm-dock));
+}
+#game-metrics[data-pos="right"] {
+  right: calc(8px + var(--sar, 0px));
+  left: auto;
+  top: calc(12px + var(--tap, 44px) + var(--sat, 0px) + min(120px, calc(80px * var(--hud-z-top, var(--hud-scale, 1)))));
+}
+#game-metrics[data-pos="left"] {
+  left: calc(8px + var(--sal, 0px));
+  right: auto;
+  /* CLEAR THE MAP, MEASURED. --gm-top guesses `80px * --hud-z-top` capped at
+     120, which is 92px at HUD SIZE 100 — while #minimap's real bottom is
+     8px + 112px = 120px (128 + 8 = 136 since the map grew). So the panel painted 28px INTO the map, every time,
+     on the one side the map is on. Reported from a phone with the map's lower
+     third covered.
+     --hud-left-px is that column's occupied bottom MEASURED by fitHud off
+     whatever is actually there (map, gap strip, broadcast tower, or nothing),
+     in SCREEN pixels because this subtree is not zoomed. The same lesson
+     #hud-limits already carries two rules down: never pin HUD chrome to a
+     constant a sibling's rendered height decides. The fallback is the map's
+     own painted bottom, so a pre-fit frame still clears it. */
+  top: calc(var(--hud-left-px, 136px) + 8px);
+}
+#game-metrics-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--gap) / 4);
+  margin: 0 0 calc(var(--gap) / 3);
+  flex: 0 0 auto;
+}
+#game-metrics-bar > button {
+  flex: 1 1 auto;
+  min-width: var(--tap-min);
+  min-height: var(--tap-sm);
+  height: var(--tap-sm);
+  padding: 0 calc(var(--gap) / 3);
+  font: inherit;
+  font-weight: 700;
+  letter-spacing: var(--ls-3);
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--plate-line);
+  border-radius: var(--r-sm);
+}
+#game-metrics-bar > button[aria-pressed="true"] {
+  color: var(--faster);
+  border-color: color-mix(in oklab, var(--faster) 45%, transparent);
+}
+#game-metrics-bar > button[data-size-cycle] {
+  flex: 0 0 auto;
+  min-width: var(--tap-min);
+}
+@media (hover: hover) and (pointer: fine) {
+  #game-metrics-bar > button:hover {
+    background: color-mix(in oklab, var(--steel) 14%, transparent);
+  }
+}
+#game-metrics-body {
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  white-space: pre;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+#game-metrics[data-compact="1"] {
+  padding: calc(var(--gap) * 0.35) calc(var(--gap) * 0.5);
+  line-height: 1.3;
+  background: color-mix(in srgb, var(--plate-opaque) 80%, transparent);
+}
+body.pc-uihidden #game-metrics { display: none !important; }
+/* THE PANEL IS HUD CHROME AND FOLLOWS THE HUD. It is created at runtime with no
+   index.html node, so it inherited none of the rules that clear the screen for a
+   menu: it painted over the title screen, the garage and every sheet, and the
+   only way out was turning it off — which is not a thing a player should have to
+   do to read their own menus. Keyed off #hud[hidden], which game.js already
+   drives at race start and race end, rather than a list of screen ids that would
+   go stale the next time one is added. The .screen.dim arm is the same idiom
+   #photo-controls and #campicker use for a sheet opened OVER a live race. */
+body:has(> #hud[hidden]) #game-metrics,
+body:has(> .screen.dim:not([hidden])) #game-metrics { display: none !important; }
+/* PHONE TEST recorder (src/perf/phone-recorder.ts): a tiny non-interactive REC
+   badge low-left inside the safe area, and the how-to + buttons in the METRICS fold. */
+#phone-rec-badge {
+  position: fixed; z-index: 11; pointer-events: none;
+  left: calc(var(--sal, 0px) + .5em); bottom: calc(var(--sab, 0px) + .25em);
+  padding: 0 .4em; border-radius: .3em; opacity: .8;
+  font: 600 10px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--text); background: var(--red);
+}
+#phone-rec-badge[hidden] { display: none; }
+#pm-phonerec > div { display: flex; gap: .5em; flex-wrap: wrap; }
+#pm-phonerec button { flex: 1 1 0; min-height: 44px; min-width: 88px; }
+#pm-phonerec button:disabled { opacity: .45; }
+#pm-phonerec ol { padding-left: 1.4em; }
+#pm-phonerec a { display: inline-block; min-height: 44px; line-height: 44px; }
+} /* @layer hud */
+
+@layer components {
+#pmsettings-inner[data-shape="wide"] #pm-panel-display #pm-metrics-details {
+  grid-area: metrics;
+  margin: 0;
+  align-self: start;
+  min-width: 0;
+}
+/* METRICS fold: a quiet column, not a 2-up plate grid (f1-game shares this rule with
+   #pm-hud-details and #pm-braking-cues, which stay with the shell). */
+#pm-metrics-details > [role="group"] {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: calc(var(--gap) / 6) 0 0;
+}
+#pm-metrics-details > [role="group"] > button {
+  width: 100%;
+  margin: 0;
+}
+#pm-metrics-details > [role="group"] > button[hidden] {
+  display: none !important;
+}
+/* Fold summaries WRAP. They are readouts (HUD · ON · STANDARD · AUTO · MAP ·
+   GAPS) and at UI SIZE 150% on a phone a fixed --chip-h line clipped MAP and
+   GAPS off the right edge (layout-audit + css-play 393x852@150). Each
+   [data-fold] span stays whole (nowrap below), so the line breaks between
+   words, never inside "TILT 6". */
+#pmsettings-inner #pm-metrics-details > [role="group"] > button {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid color-mix(in oklab, var(--steel) 22%, transparent);
+  border-radius: 0;
+  box-shadow: none;
+  font-weight: 600;
+}
+#pmsettings-inner #pm-metrics-details > [role="group"] > button:last-child {
+  border-bottom: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  #pmsettings-inner #pm-metrics-details > [role="group"] > button:hover {
+    background: color-mix(in oklab, var(--steel) 12%, transparent);
+    box-shadow: none;
+  }
+}
+} /* @layer components */
