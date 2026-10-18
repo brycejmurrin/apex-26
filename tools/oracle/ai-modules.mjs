@@ -141,4 +141,63 @@ for (let i = 0; i < 300; i++) {
   const out = AiCorridor.choose(cc, car, blocker, cars, 5793, clear);
   fn("corridor", [cc, cars, clear], structuredClone(out));
 }
+// The wear-on strategy planner (ai-drive.js:1031-1380), on its own seed so the
+// cases above keep their draws. `lifeLaps` travels as a { soft, medium, hard } table.
+{
+  const r2 = rng(0x57a7);
+  const V = (lo, hi) => lo + (hi - lo) * r2();
+  const P = (a) => a[Math.floor(r2() * a.length)];
+  const C = (p) => r2() < p;
+  const lifeTable = () => ({ soft: V(0.5, 30), medium: V(0.5, 45), hard: V(0.5, 60) });
+  const tr = () => ({ craft: V(0, 1), awareness: V(0, 1), experience: V(0, 1), skill: V(0.9, 1), consistency: V(0.4, 1), aggression: 0, optimism: 0 });
+  for (let i = 0; i < 400; i++) {
+    const laps = P([1, 2, 3, 5, 6, 8, 10, 12, 15, 20, 25, 30, 44, 57, 70]) + (C(0.2) ? V(-0.6, 0.6) : 0);
+    const life = C(0.15) ? null : lifeTable();
+    const sp = {};
+    if (C(0.9)) sp.laps = laps;
+    if (life) sp.life = life;
+    if (C(0.7)) sp.pitLossLaps = C(0.1) ? 0 : V(0.05, 0.6);
+    if (C(0.9)) sp.roll = V(-0.1, 1.1);
+    if (C(0.3)) sp.stops = P([-1, 0, 1, 2, 3, 1.7]);
+    if (C(0.25)) sp.start = P(["soft", "medium", "hard", "wet", "inter"]);
+    if (C(0.25)) sp.firstLife = P([0, V(0.5, 30)]);
+    if (C(0.5)) sp.twoCompound = C(0.7);
+    if (C(0.25)) sp.used = P([[], ["soft"], ["hard"], ["soft", "medium"], ["wet"]]);
+    const { life: lt, ...rest } = sp;
+    const ctxIn = lt ? { ...rest, lifeLaps: (cls) => lt[cls] } : rest;
+    let out;
+    try { out = structuredClone(A.stintPlan(ctxIn)); } catch (e) { out = { $throws: String(e && e.name) }; }
+    fn("stintPlan", [sp], out);
+    const lives = Array.from({ length: P([1, 2, 3]) }, () => V(0.2, 40));
+    fn("splitStints", [Math.max(1, Math.floor(V(1, 70))), lives, P([undefined, 0, 0.22, V(0, 0.5)])], null);
+    golden.fns[golden.fns.length - 1].out = A.splitStints(...golden.fns[golden.fns.length - 1].args);
+    fn("degCost", [V(0, 40), V(-1, 40)], null);
+    golden.fns[golden.fns.length - 1].out = A.degCost(...golden.fns[golden.fns.length - 1].args);
+    const ct = lifeTable();
+    const left = V(-3, 50);
+    fn("compoundFor", [left, ct], A.compoundFor(left, (cls) => ct[cls]));
+    const car = C(0.2) ? {} : tr();
+    fn("strategyTemper", [car], { ...A.strategyTemper(car) });
+    fn("tasteRoll", [V(-0.2, 1.2), car], null);
+    golden.fns[golden.fns.length - 1].out = A.tasteRoll(...golden.fns[golden.fns.length - 1].args);
+    const wc = {};
+    if (C(0.85)) wc.lapsLeft = V(0, 30);
+    if (C(0.9)) wc.wear = V(0, 2);
+    if (C(0.7)) wc.pitLossLaps = P([0, -1, V(0.05, 0.6)]);
+    fn("wornPays", [wc], A.wornPays(wc));
+    const pc = { ...wc, stopsLeft: P([0, 1, 2]), lapsToStop: Math.floor(V(-2, 8)), wear: V(0.2, 1.15) };
+    if (C(0.1)) pc.wrongTread = true;
+    if (C(0.1)) pc.scripted = true;
+    if (C(0.5)) pc.cautionLevel = P([0, 1, 2, 3, 4]);
+    if (C(0.5)) pc.fits = C(0.7);
+    if (C(0.5)) pc.rivalUsed = C(0.5);
+    if (C(0.5)) pc.rivalBehindBoxed = C(0.5);
+    if (C(0.5)) pc.stuckBehind = C(0.5);
+    if (C(0.7)) pc.react = V(0.4, 1);
+    if (C(0.7)) pc.attack = V(0.6, 1);
+    fn("pitNow", [C(0.03) ? null : pc], null);
+    golden.fns[golden.fns.length - 1].out = A.pitNow(golden.fns[golden.fns.length - 1].args[0]);
+  }
+  golden.strat = structuredClone(A.STRAT);
+}
 writeGolden("ai-modules.json.gz", golden);

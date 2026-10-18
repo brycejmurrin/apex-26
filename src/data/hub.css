@@ -1,7 +1,6 @@
 /* Data Hub styles (.dh-*). Ported verbatim from f1-game css/data.css:1-1299.
    The design tokens it reads (--gap, --text, --fs-*, --plate, --red, --ui-scale, …)
-   come from the app-wide stylesheet. TODO(lane-shell): port those tokens
-   (f1-game css/base.css and css/components.css); until then the hub renders with fallbacks. */
+   come from src/styles/ (tokens.css), which hub.ts imports first. */
 @layer overlays {
 /* Apex 26 — F1 Data Hub overlay. All classes prefixed dh-. */
 

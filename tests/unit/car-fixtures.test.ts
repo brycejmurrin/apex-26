@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { build, buildComplete, type BuildOptions } from "../../src/car/car3d";
 import type { MeshOut, Vec3 } from "../../src/car/types";
 import { haveF1, loadF1Car } from "../helpers/f1-car-vm";
+import { summary, type MeshSummary } from "../helpers/mesh-summary";
 
 // Car3D.build summaries recorded from f1-game (Node VM) so CI, which has no f1-game,
 // still pins the port: vertex/index counts, bounding box, per-surface vertex counts
@@ -27,32 +28,7 @@ const CONFIGS: Config[] = [
   { name: "livery-finishes", opts: { teamId: "cadillac", livery: { finish: "satin", bodySplit: "lr", wingCarbon: "carbon", coverFinish: "chrome" } } },
 ];
 
-function fnv(a: readonly number[]): string {
-  const dv = new DataView(new ArrayBuffer(8));
-  let h = 0x811c9dc5;
-  for (const v of a) {
-    dv.setFloat64(0, v);
-    for (let i = 0; i < 8; i++) h = Math.imul(h ^ dv.getUint8(i), 0x01000193);
-  }
-  return (h >>> 0).toString(16).padStart(8, "0");
-}
-
-function summary(m: MeshOut) {
-  const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
-  for (let i = 0; i < m.pos.length; i++) {
-    const v = m.pos[i]!, k = i % 3;
-    if (v < min[k]!) min[k] = v;
-    if (v > max[k]!) max[k] = v;
-  }
-  const surfaces: Record<string, number> = {};
-  for (const s of m.mat) surfaces[s] = (surfaces[s] ?? 0) + 1;
-  return {
-    vertices: m.mat.length, indices: m.idx.length, min, max, surfaces,
-    hash: { pos: fnv(m.pos), nrm: fnv(m.nrm), col: fnv(m.col), mat: fnv(m.mat), idx: fnv(m.idx) },
-  };
-}
-
-type Summary = ReturnType<typeof summary>;
+type Summary = MeshSummary;
 const mine = (c: Config) => summary((c.complete ? buildComplete : build)(c.c1, c.c2, c.opts));
 
 describe("Car3D fixtures (recorded from f1-game)", () => {

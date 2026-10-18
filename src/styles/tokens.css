@@ -1,0 +1,1358 @@
+/* Ported verbatim from f1-game css/tokens.css (font urls re-pointed at ./fonts/). */
+/* Apex 26 — design tokens (:root), base html/body/canvas, menu-toggle states.
+   Split from css/style.css (lines 1-62 of the original). Now the FIRST-loaded
+   sheet, it declares the cascade-layer order once for the whole split stylesheet
+   (see tools/manifest.cjs CSS). Every split sheet wraps its rules in the layer
+   that matches its former load position, so the winner of every cross-file
+   collision is unchanged (the only bare-element base rules live here in `base`;
+   all later files override with higher class/id specificity, which layers keep
+   as the winner). The `@layer` declaration below just makes that ordering
+   explicit and deterministic instead of load-order-implicit. */
+
+/* Deterministic cascade-layer order across the split stylesheet. reset < base <
+   components < hud < overlays. Later layers win normal-declaration ties. */
+@layer reset, base, components, hud, overlays;
+
+/* Self-hosted web fonts (SIL OFL 1.1 — see assets/fonts/*-OFL.txt). Vendored via
+   `npm pack @fontsource/{titillium-web,barlow-condensed}`; latin woff2 subsets
+   only. THIS SHEET DECLARES THE THREE TITLE FACES the shell preloads
+   (Titillium 600, Titillium 700 italic, Saira wordmark subset). Barlow and the
+   unused Titillium 400/700-normal weights live in css/fonts-hud.css (print→all)
+   so the CSS parser does not discover those woff2 files during the title style
+   phase. `font-display: swap` so the system-font fallback paints instantly.
+   @font-face is layer-insensitive, so these sit outside the layer blocks.
+   Immutable vendored assets → NO ?v= cache-buster (same as vendor/three-*). */
+@font-face {
+  font-family: "Titillium Web"; font-style: normal; font-weight: 600;
+  font-display: swap;
+  src: url("./fonts/titillium-web-latin-600-normal.woff2") format("woff2");
+}
+@font-face {
+  /* One italic face (700) covers the italic headings/labels; the browser
+     synth-bolds it for the 800 weights the design uses. */
+  font-family: "Titillium Web"; font-style: italic; font-weight: 700;
+  font-display: swap;
+  src: url("./fonts/titillium-web-latin-700-italic.woff2") format("woff2");
+}
+/* SAIRA, FOR THE WORDMARK ONLY. The APEX 26 title is the one place a face with
+   a motorsport accent earns its bytes, and Titillium is the face Formula 1's
+   own brand guidelines single out ("must not imply association"), so the
+   wordmark moved off it. Everything else stays Titillium. The file is Saira
+   Italic (OFL; the licence text sits beside it in assets/fonts) pinned to weight 800 and subset to
+   the glyphs the wordmark can draw — A P E X, the digits, a space — so it is
+   2.4 KB instead of 37 KB; any other character falls through to Titillium.
+   Its digits are uniform through tnum (the tests/data font-digits ledger). */
+@font-face {
+  font-family: "Saira Wordmark"; font-style: italic; font-weight: 800;
+  font-display: swap;
+  src: url("./fonts/saira-apex26-800-italic.woff2") format("woff2");
+}
+/* Native same-document View Transitions (progressive enhancement — menus.js
+   wraps its screen swaps in document.startViewTransition when supported). The
+   UA default is a 0.22s plus-lighter cross-fade of BOTH root snapshots, which
+   prints the title tiles over the Grand Prix list and the Career sheet. Fade
+   the old snapshot out first, then fade the new in over an opaque --bg scrim;
+   mix-blend-mode:normal drops the UA plus-lighter keyframe. Reduced-motion
+   still cancels the animation entirely. Outside the layer blocks: these UA
+   pseudo-elements aren't part of the normal element cascade. */
+@keyframes apex-vt-fade-out { to { opacity: 0; } }
+@keyframes apex-vt-fade-in { from { opacity: 0; } }
+::view-transition { background-color: var(--bg); }
+::view-transition-old(root) {
+  animation-name: apex-vt-fade-out;
+  animation-duration: 0.10s;
+  animation-timing-function: ease-out;
+  animation-fill-mode: both;
+  mix-blend-mode: normal;
+  z-index: 0;
+}
+::view-transition-new(root) {
+  animation-name: apex-vt-fade-in;
+  animation-duration: 0.14s;
+  animation-delay: 0.10s;
+  animation-timing-function: ease-in;
+  animation-fill-mode: both;
+  mix-blend-mode: normal;
+  z-index: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) { animation: none !important; }
+  /* Backstop for the infinite loops the curated per-site handling doesn't reach
+     (redline/overtake pulses, the data spinner, the yellow-flag pulse, the
+     rotate-device hint). Don't remove animation — make it instant and non-
+     repeating, so one-shot transitions still complete but nothing throbs.
+     WCAG 2.3.3 / vestibular safety. */
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}
+/* The same cancel for the in-game MOTION: REDUCED setting
+   (html[data-motion="reduce"], js/ui/title-fx.js). js/ui/select-screen.js
+   skips startViewTransition under it too, so this only catches a transition
+   some other caller starts. */
+:root[data-motion="reduce"]::view-transition-group(*),
+:root[data-motion="reduce"]::view-transition-old(*),
+:root[data-motion="reduce"]::view-transition-new(*) { animation: none !important; }
+
+/* Windows High Contrast / forced-colors: gradients and translucent panel edges
+   flatten to system colours, so the red-border "selected" cue and panel outlines
+   can vanish. Restate selection and panel edges with system colours + a non-
+   colour outline so the sighted high-contrast user keeps the affordance the
+   aria-pressed mirroring already gives assistive tech. */
+@media (forced-colors: active) {
+  [aria-pressed="true"], [aria-selected="true"], .active {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+  .sheet, .hud-box, dialog { border: 1px solid CanvasText; }
+  /* Colour IS the content on a swatch: per CSS Color Adjust 1 a non-url()
+     background-image computes to `none` under forced colors, so every team/
+     livery/result swatch (and the CUSTOMIZE colour wells) went blank. Opting
+     the swatches out keeps the author colour where removing it destroys the
+     information, which is exactly the carve-out the spec provides. */
+  .cs-liv-swatch, .tm-colour, .sel-chip .swatch, .res-swatch, .dh-swatch,
+  .pm-accent-chip, .pm-accent-preview-hud,
+  input[type="color"] { forced-color-adjust: none; }
+  /* The race-control flag is the same carve-out: yellow vs VSC vs SC is
+     encoded in the badge's background colour (css/hud.css), and with it
+     forced to Canvas all three states render identically. */
+  #hud-flag { forced-color-adjust: none; }
+  /* Disabled controls dim via opacity, which forced-colors does NOT reset —
+     but nothing else distinguishes them there. GrayText is the platform's own
+     word for "present but unavailable" (RECALIBRATE TILT and GEARS disable
+     rather than hide, so the affordance must read). */
+  button:disabled { color: GrayText; opacity: 1; }
+}
+
+/* Scroll-fade custom properties. The fade is driven by JS, not a scroll
+   timeline: js/game/scrollfade.js toggles .sf-t/.sf-b on exactly the panes with
+   content hidden above/below, and css/components.css maps those classes to
+   these lengths in the pane's mask-image. Registered with typed 0px initials so
+   the mask expression is always well-formed: a pane without the classes keeps
+   the initial values and the gradient collapses to fully opaque — content is
+   completely unmasked, and the fade appears only when there really is more
+   content off-screen.
+   @property is not part of the element cascade, so it sits outside the layers. */
+@property --sfade-t { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --sfade-b { syntax: "<length>"; inherits: false; initial-value: 0px; }
+/* Scroll-thumb geometry, written by js/game/scrollfade.js on each scroll region.
+   `inherits: false` is the load-bearing part, not the typing: a plain custom
+   property inherits, so setting one on a scroll container invalidates style
+   for its WHOLE subtree — and these are set on containers holding 80+ rows
+   (the lighting tuner), on every scroll. `inherits: false` was tried for
+   that reason, with the belief that "a change touches only the element and
+   the ::before that draws the thumb" — MEASURED FALSE (round-13 probe): a
+   pseudo-element inherits from its originating element by the normal rules,
+   so a non-inheriting property never reaches the ::before at all. The thumb
+   read the INITIAL values everywhere — pinned at the top, always 24px, on
+   every scroller, for as long as the registration stood. Inheriting is the
+   price of the thumb existing; ScrollFade already bounds the writes (it
+   skips when the thumb has not moved), which is the real perf control. */
+@property --sf-h { syntax: "<length>"; inherits: true; initial-value: 24px; }
+@property --sf-y { syntax: "<length>"; inherits: true; initial-value: 0px; }
+/* Where the specular band sits across a primary button, 0% = off the leading
+   edge, 100% = off the trailing one. REGISTERED because an unregistered custom
+   property animates DISCRETELY — it would jump rather than sweep, which is the
+   whole effect. This is the only way to animate a gradient at all: the gradient
+   itself is not an animatable value, but a typed custom property inside it is. */
+@property --sheen { syntax: "<percentage>"; inherits: false; initial-value: -30%; }
+/* THE SHORT-SHEET THRESHOLD, read by js/game/sheetshape.js to decide
+   data-density. `inherits: false` is the whole point, exactly as it is for
+   --sf-h above: a plain custom property inherits, and the moment #overlay's
+   document-level 600px was declared on body it cascaded into every .sheet and
+   moved their thresholds from 380 to 600 — the garage went compact at UI SIZE
+   100% on a 1000x462 viewport, which tests/specs/ui-resize.spec.js caught
+   immediately. Registered non-inherited, each element answers for itself: the
+   initial value is the generic sheet's 380, #lighting-inner/#camtune-inner
+   declare 620, body declares 600, and none of them leak into the others. */
+@property --compact-at { syntax: "<length>"; inherits: false; initial-value: 380px; }
+/* THE TALL RATIO, declared ONCE here so the pre-paint inline script in
+   index.html and js/game/sheetshape.js cannot disagree about it — the same
+   rule --compact-at already follows. body[data-shape="tall"] combines with
+   data-density to restructure #overlay and move #menu-brand (css/menus.css),
+   so a first answer that arrives AFTER paint moves the whole menu. Registered
+   as <number> for the same reason as the tap ladder: unregistered,
+   getComputedStyle hands back a raw token stream and parseFloat gives NaN.
+   Hysteresis (the "wide" edge) stays in sheetshape.js, derived from this. */
+@property --tall-at { syntax: "<number>"; inherits: false; initial-value: 1.05; }
+/* THE TAP LADDER IS TYPED so JS can READ it. All three are max(Npx,
+   calc(24px / var(--ui-scale))) expressions; unregistered, getComputedStyle
+   returns the raw token stream and every parseFloat() on it is NaN — which
+   is how tools/layout-audit.mjs measured every tap against a hardcoded 44
+   for its whole life (its own comment block swears the opposite), and how
+   js/game/menus.js's chip-height read silently pinned the circuit preview
+   band to 40 at every scale and on every pointer. Registered <length>, the
+   computed value is a resolved px length and both readers work. `inherits:
+   true` (the default for plain custom properties) is load-bearing: consumers
+   read these anywhere in the tree, and the body:not(.desktop) touch override
+   must keep cascading down. */
+@property --tap { syntax: "<length>"; inherits: true; initial-value: 44px; }
+@property --chip-h { syntax: "<length>"; inherits: true; initial-value: 40px; }
+@property --tap-min { syntax: "<length>"; inherits: true; initial-value: 24px; }
+@property --tap-paint { syntax: "<length>"; inherits: true; initial-value: 24px; }
+/* Menu range hit-band. Painted 32px at every UI SIZE: the token divides by
+   --ui-scale so sheet zoom does not grow the control. Chrome stays native
+   (accent-color). Unregistered, a parseFloat reader would see the calc(). */
+@property --slider { syntax: "<length>"; inherits: true; initial-value: 32px; }
+/* --tap-sm completes the set: unregistered it left the audit tool's floor
+   read non-deterministic between cells (44-fallback on most iPhone rows). */
+@property --tap-sm { syntax: "<length>"; inherits: true; initial-value: 30px; }
+
+@layer base {
+/* Apex 26 — layout, HUD, menus. Data hub styles live in css/data.css */
+
+:root {
+  color-scheme: dark;
+  --red: #e10600;
+  /* Official F1 Carbon Black (~#15151E) cooled into a deeper stage black so
+     sheets still float over the live circuit; --carbon is the steely tint for
+     borders / disabled / secondary plates (brand guidelines: carbon hierarchy,
+     not pure #000). */
+  --carbon: #15151E;
+  --bg: #0c0c14;
+  /* Spark accent — warnings / NEW / session badges only. Never body copy.
+     Kept out of Warm Red so red stays scarce (P1 / primary / true alerts). */
+  --spark: #ff8c42;
+  /* Section-label and secondary-plate ink — the role d02d19bd4 standardised
+     here when "leftover idle ink and leftover-red headlines" moved onto one
+     name. That pass picked the token; it did not measure it. #8a8a96 is APCA
+     Lc 39.8 on --bg (39.3 on --surf-1, 37.7 on --surf-3), carried at
+     --fs-micro/--fs-2 — the two smallest sizes — on settings labels, section
+     headings and #howtoplay dt. Those are read, not scanned past.
+
+     IT IS NOT LIGHTENED TO SOME NEW VALUE, because there is no room for one.
+     --dim does this job at Lc 48.0, and the two are the SAME INK: identical
+     OKLab hue angle (-74.1deg), chroma 0.0178 vs 0.0203, differing only in
+     lightness (0.637 vs 0.691). Sweeping this token's lightness with a and b
+     held fixed, every value that clears a defensible floor on the worst ground
+     is at or past --dim's own lightness. The "cool steel chrome" hierarchy was
+     a lightness step dressed as a hue, and one end of it had fallen out of
+     readability — so the step goes and the NAME stays, because the role is
+     real and the call sites say which ink they mean.
+
+     Kept as an alias rather than inlined at ~30 call sites: section chrome is
+     a thing you may want to tune apart from body-secondary later, and the
+     alias is where that tuning would happen. tests/unit/steel-role.test.mjs
+     holds both halves. Never a red substitute. */
+  --steel: var(--dim);
+  /* Translucent on purpose: sheets sit over the live #game circuit, and that
+     3D view is the imagery. 0.76 leaves floodlights and tarmac readable
+     through the card without dropping type contrast. Reduced-transparency
+     swaps this for --surf-1 (css/components.css). */
+  --panel: color-mix(in oklab, #fff 5%, color-mix(in oklab, var(--carbon) 88%, transparent));
+  /* Hi-Vis White analogue — brand forbids Warm Red as body/headline ink. */
+  --text: #f6f6f9;
+  /* Fixed candidates for ink on team plates; menu Light never reverses them. */
+  --hud-ink-light: #f6f6f9;
+  --hud-ink-dark: #0c0c14;
+  --dim: #9a9aa8;
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  /* ---- safe-area layout tokens ----------------------------------------
+     The shell ships `viewport-fit=cover`, so the viewport spans the WHOLE
+     screen — notch, Dynamic Island and home indicator included. Every
+     full-screen menu therefore has to subtract the OS insets itself or its
+     content ends up under hardware. On a landscape phone that inset is ~59px
+     on the notch side and ~21px at the bottom, which is why menus looked
+     "crammed": the panel was sized to the full 852px and the first ~59px of
+     it was behind the island.
+     --gut is the minimum breathing room at a screen edge; --safe-t/r/b/l are
+     ready-made paddings.
+     Height uses svh, not dvh: svh is the viewport with the browser toolbars
+     SHOWN, so a menu sized against it can never be swallowed by a toolbar
+     sliding back in mid-scroll (dvh also re-lays-out on every toolbar
+     transition, which reads as jitter). In a standalone PWA they are equal. */
+  /* THE HOUSE UNIT FOR A LAYOUT CAP IS `svh`, NOT `vh`.
+     `vh` is the LARGE viewport — the height with the browser toolbars retracted
+     — so a `max-height: 80vh` modal on iOS is capped against space that is not
+     on screen while the toolbar is showing. `svh` is the small viewport, which
+     is the one you are guaranteed. Every layout cap and every fixed overlay
+     position here uses it (the QR panel's comment says it outright: "a QR that
+     needs scrolling to see is a QR nobody can scan", and `vh` was the reason it
+     could).
+     `dvh` is deliberately NOT the house unit: it changes as the toolbar slides,
+     so anything sized against it re-lays-out mid-scroll, which reads as jitter.
+     WHAT STAYS ON `vh`: the type and gap clamps (`clamp(15px, 3.6vh, 24px)` and
+     friends). Those want the roomier number, and a font-size that changed as the
+     toolbar moved would be far worse than a few pixels of imprecision. */
+  --gut: 12px;
+  --safe-t: calc(var(--sat) + var(--gut));
+  --safe-r: calc(var(--sar) + var(--gut));
+  --safe-b: calc(var(--sab) + var(--gut));
+  --safe-l: calc(var(--sal) + var(--gut));
+  /* Usable box inside hardware on full-screen menus (#overlay, .screen hosts).
+     Any cap written against raw svh/vw must use these, not 100% of the
+     viewport — viewport-fit=cover includes the notch and home indicator. */
+  --safe-w: calc(100vw - var(--safe-l) - var(--safe-r));
+  --safe-h: calc(100 * var(--svhz) - var(--safe-t) - var(--safe-b));
+  /* Software-keyboard occlusion, LAYOUT px. env() cannot see the keyboard —
+     on iOS Safari and Chromium-Android it shrinks only the VISUAL viewport,
+     so svh/dvh/lvh all miss it too. js/game/sheetshape.js watches
+     visualViewport and overrides this inline on the root while a keyboard is
+     up; 0px here is the no-keyboard (and no-visualViewport-API) resting
+     state. Consumed by the screen host's bottom padding in components.css. */
+  --kb: 0px;
+  /* ---- density ----
+     The ONE thing a screen size is allowed to change. Every menu reads these
+     instead of hard-coding its own padding/heights, so "make it fit a short
+     phone" is a single override at the bottom of this file rather than a
+     per-screen media query in every stylesheet. WHAT the layout is (how many
+     columns, what is pinned) is decided by container queries on the sheet
+     itself — see css/components.css.
+     Tap targets: WCAG 2.5.8 AA floors at 24px, Apple HIG asks 44, Android 48.
+     44 wherever it fits, 40 on a short landscape phone where six rows of 44
+     would push the primary action off a 393px-tall screen. */
+  --pad: 22px;      /* sheet padding */
+  --gap: 12px;      /* gap between sibling controls */
+  /* ---- THE CONTROL HEIGHT LADDER — three steps, and nothing off it ----
+     A nine-viewport sweep measured TEN distinct control heights for controls of
+     equal rank: 28, 34, 36, 37, 38, 40, 41, 42, 43, 44. Every one came from a
+     component inventing its own padding instead of reaching for these tokens,
+     which is why nothing on a row ever quite lined up with anything else.
+
+       --tap      primary: buttons, list rows, tabs, the things you aim at
+       --chip-h   secondary: chips, inputs, colour wells, option buttons
+       --tap-sm   the paired micro-toggles ONLY (MUSIC ON/OFF, SKIP), which are
+                  deliberately small so a settings row reads as one control
+
+     44 is Apple's HIG size and WCAG 2.5.5 (AAA). The landscape values below are
+     smaller on purpose: that viewport is ~393px tall and four steps of 4px is a
+     whole list row. Everything stays well clear of the WCAG 2.5.8 AA floor
+     (24px), which is the number that is actually a requirement. */
+  /* The second branch preserves WCAG's 24px PAINTED floor when UI SIZE zooms
+     the sheet below 100%. At 40%, for example, 60 local px paint as 24px. */
+  --tap: max(44px, calc(24px / var(--ui-scale)));      /* minimum interactive box */
+  --chip-h: max(40px, calc(24px / var(--ui-scale)));   /* chips are secondary */
+  --tap-sm: max(30px, calc(24px / var(--ui-scale)));   /* paired micro-toggles */
+  /* The shipped --tap / --chip-h, frozen (the touch ladder below re-freezes
+     its own), so APPEARANCE ›
+     BUTTON HEIGHT can rescale them on one screen without a self-reference
+     (css/responsive.css SCREEN LOOKS, js/ui/screen-looks.js). */
+  --tap-0: var(--tap);
+  --chip-h-0: var(--chip-h);
+  /* THE WCAG FLOOR, AND THE ONE LENGTH HERE THAT DIVIDES BY THE SCALE.
+     The note below is right that a size token must NOT pre-multiply — a zoomed
+     subtree already scales what it inherits, and doing both double-counts. A
+     FLOOR is a different kind of thing: 24px is a requirement in the pixels a
+     thumb actually lands on, so it has to survive the subtree being scaled DOWN.
+     --tap at 44 has headroom and is fine at every setting (44 x 0.8 = 35.2);
+     a control sitting exactly on 24 has none.
+     MEASURED, 1900-cell matrix across five UI sizes: at UI SIZE 80% the two
+     tuner panels put 35 and 23 controls under the floor, plus the ADVANCED
+     STEERING and MUSIC & SOUND sliders — every one of them 19px, which is
+     24 x 0.8. Nothing failed at 115 or 130. A single-scale survey could not see
+     it, and the scale ladder ships all five.
+     max(), so a control never SHRINKS at a large scale either: at 1.5 the 24px
+     branch wins and it paints 36. */
+  --tap-min: max(24px, calc(24px / var(--ui-scale)));
+  /* --tap-paint: THE FLOOR A COMPACT CONTROL PAINTS AT, in actual px. A
+     compact sheet (data-density="compact") cannot afford --tap in LOCAL px —
+     52 inside zoom 1.09 paints 56.7, and at UI SIZE 200% it paints 104 — so the
+     compact rules sat on --tap-min instead, which paints 24 x 1.09 = 26.
+     MEASURED 2026-10-05, ios-iphone-landscape 734x343: QUALIFYING's BACK /
+     DRIVE MY LAP / SIMULATE 285x26, the career hub's MAIN MENU 187x26, the
+     data hub ✕ 26x26 and all seven tabs 26 tall — every one a primary action
+     on a touch screen, under the 52 the touch ladder promises. Dividing by the
+     scale (the --slider precedent) holds the PAINTED size: on a coarse
+     pointer it paints 52 at every UI SIZE (the touch ladder below) — 52, not
+     --tap's 56.7, at the default, and 52, not 104, at 200%. With a mouse it
+     IS --tap-min, so desktop compact layouts do not move.
+     --tap-paint-at is the PAINTED target it divides (24 with a mouse, 52 on
+     touch, below), published on its own so a fit-capped sheet can divide it by
+     the zoom it ACTUALLY paints at: css/components.css (.sheet) and
+     css/data.css (.dh-card) re-derive --tap-paint against --sheet-scale, the
+     same way they re-derive --slider. Divided by the requested slider instead,
+     a capped sheet painted under the floor — MEASURED 2026-10-05 (layout-audit,
+     ios-iphone-landscape 734x343 @130/@150): the data hub ✕ and all seven
+     tabs 47 / 41 tall, QUALIFYING's three doors and the career hub's MAIN MENU
+     48 at 150 %, because the hub's --sheet-scale capped at ~1.18 and 52 / 1.3
+     x 1.18 is 47. */
+  --tap-paint-at: 24px;
+  --tap-paint: var(--tap-min);
+  /* Painted 32px at every UI SIZE (24 × 4/3 of the WCAG floor). Divide by
+     --ui-scale so a 150% sheet does not paint a 48px track. Buttons still
+     use --tap-min; only <input type=range> reads this. */
+  --slider: calc(32px / var(--ui-scale));
+  --label: 14px;    /* section label type size — clears 12px visual at 90% zoom */
+  /* THE TYPE FLOOR. No menu text may be smaller than this.
+     A sweep across nine viewports found twenty-four hard-coded sizes below it —
+     8px NIGHT/STREET badges on the circuit list, 9px UNIVERSAL and ▲ACCEL tags
+     on CAR SETUP, 9px column labels through the data hub, 9.5px chips in the
+     tuner — every one of them a separate decision nobody could keep in step.
+     One token instead: uppercase micro-labels are the smallest type this UI
+     has, and this is how big they are. The in-race HUD is deliberately NOT on
+     this scale (see css/hud.css) — its labels are glanced at, not read, and
+     they are sized to boxes that have to clear the driving controls.
+     2026-08-12 90% UI-scale floor: .sheet zoom ≈0.9, so painted type is
+     fs*0.9. Visual floor is 12px → CSS inside zoomed sheets must be ≥14
+     (ceil(12/0.9)). Micro/body rungs sit at that floor; higher rungs step up
+     so hierarchy survives. */
+  --fs-micro: 14px;
+  /* ---- TYPE SCALE — seven steps, menus/HUD-adjacent body text only ----
+     No type system existed: 294 raw `font-size: Npx` declarations across the
+     eight menu stylesheets, measured by counting every one of them, sorted:
+       8:3  9:10  10:58  10.5:2  11:57  12:59  12.5:1  13:37  14:18  15:12
+       16:12  17:3  18:5  19:1  20:5  22:3   ...then one-off 23-68px sites.
+     Below ~22px the values are a near-continuous ramp, not the clean gaps the
+     radius tokens had — so each step below is anchored on whichever value is
+     ALREADY most common in its band, same rule the radius tokens used, and a
+     few adjacent sizes move by a single pixel onto the nearest step. That is a
+     deliberate, logged consolidation each time a file migrates onto these —
+     never a silent one.
+     Above ~22px every remaining size (23-68px) is a ONE-OFF: a HUD digit
+     readout or a hero title, not a repeated body size. Those stay off this
+     scale entirely, the same exclusion css/hud.css already documents above.
+       --fs-1  micro labels, badges, uppercase tags        = --fs-micro (14px)
+       --fs-2  body base — the single most common size      (15px; was 13)
+       --fs-3  body emphasis / secondary label               (16px; was 14)
+       --fs-4  control label / subhead                       (17px; was 15)
+       --fs-5  larger subhead / button text                  (18px; was 16)
+       --fs-6  section heading                                (20px)
+       --fs-7  large heading — the ceiling of this scale       (22px)
+     2026-08-12 readability pass (MCP survey × TinyFish research): the phone-
+     first rule in docs/research/UI-DESIGN-PRINCIPLES.md says the smallest rung
+     must stay legible at arm's length under UI SIZE zoom. Raising micro/body
+     to ≥14px CSS keeps painted type ≥12px visual at the 90% UI SIZE floor
+     without redesigning every screen.
+     Migrate ONE FILE PER COMMIT with a before/after font-size dump, per
+     docs/notes/PARALLEL-WORK.md's B1 stage — a commit that changes rendering here
+     is only acceptable when that dump says so on purpose.
+     ONLY THE STEPS WITH A REAL CONSUMER ARE DECLARED BELOW.
+     tests/unit/css-tokens.test.mjs fails a defined-but-unread custom property, on
+     purpose ("an unread token is an invitation to use a value nobody has been
+     maintaining") — so --fs-7 stays in the table above only, and gets its
+     `--fs-N: …;` line added by whichever future file's migration is its
+     first real consumer, not pre-declared here.
+     --fs-1/--fs-3/--fs-4 joined this list with css/data.css's migration. */
+  --fs-1: var(--fs-micro);
+  --fs-2: 15px;
+  --fs-3: 16px;
+  --fs-4: 17px;
+  --fs-5: 18px;
+  --fs-6: 20px;
+  /* ---- TRACKING — five steps ----
+     127 letter-spacing declarations ran 17 distinct values; 110 of them sat
+     on the arithmetic run 0.02..0.14. Five rungs absorb 111 sites with no
+     fold over 0.02em, and every 0.02em fold is a TIGHTENING (0.10 -> ls-4,
+     0.14 -> ls-5) — widening is what truncates a label in a fixed column
+     (measured on .cs-tab-lbl: ~1.4px per 0.01em per 10 chars), so the folds
+     can never mint a new ellipsis. Stays literal: the zeros (measured fit
+     recoveries), the vs-friend room code (paired with text-indent), the
+     LOADING spacer (the tracking IS the effect), and everything in
+     css/hud.css — in-race type is calibrated as a unit and must not move
+     when a menu pass retunes a rung (hud.css:19-22). */
+  --ls-1: 0.02em;   /* tight — italic names, tabular numerics, body */
+  --ls-2: 0.04em;   /* base — headline italics, meta lines */
+  --ls-3: 0.06em;   /* label — dim uppercase labels, chips */
+  --ls-4: 0.08em;   /* caps — uppercase tags, badges, section chrome */
+  --ls-5: 0.12em;   /* display — section labels, eyebrows, meters */
+  /* ---- CORNER RADIUS — four steps, plus a pill ----
+     These tokens existed and had three users. Everything else hard-coded its
+     own: fourteen distinct radii across the stylesheets (1, 2, 3, 4, 5, 6, 7,
+     8, 9, 10, 12, 14, 20 and 999), which is why a chip, the input beside it and
+     the button under it could each round differently. The steps below are set
+     to whichever value was already the most common in each band, so adopting
+     them moves most corners by a pixel or none at all.
+       --r-xs  hairline bars, meters, tiny swatches      (was 1/2/3)
+       --r-sm  chips, colour wells, small controls       (was 4/5/6/7)
+       --r-md  buttons, rows, cards                      (was 8/9/10)
+       --r-lg  sheets, panels, the data-hub card         (was 12/14/20)
+       --r-pill  fully round ends — tabs, badges         (999px)
+     `border-radius: 50%` is NOT on this scale: a circle is a shape, not a
+     corner, and the touch pads have to stay circular at any size. */
+  --r-xs:   3px;
+  --r-sm:   6px;
+  --r-md:   8px;
+  --r-lg:   14px;
+  --r-pill: 999px;
+  /* Type: menus/body use Titillium Web; the numeric HUD/timing uses the
+     condensed Barlow Condensed. Both fall back to the previous system stack so
+     a failed font load is invisible — and Titillium, next in the HUD stack, has
+     naturally uniform digits, so the fallback does not reintroduce the slide. */
+  --font-ui:  "Titillium Web", "Segoe UI", system-ui, -apple-system, Helvetica, Arial, sans-serif;
+  --font-hud: "Barlow Condensed", "Titillium Web", "Segoe UI", system-ui, -apple-system, sans-serif;
+  /* Team skin: one accent hex drives the HUD identity. Defaults to the F1 red;
+     a per-team override lives in the [data-team] blocks below, set on <html> by
+     the HUD when the player's team is known. --accent-dim is derived so it
+     tracks whatever --accent resolves to (custom props resolve at use-time). */
+  --accent: var(--red);
+  --accent-dim: color-mix(in oklab, var(--accent) 40%, var(--bg));
+  /* INK for the one place text stands ON --accent: the radio card's number
+     plate. The accents run from #0f3cc9 (racing bulls) to #f5f5f5 (cadillac),
+     so NO single ink clears 4.5:1 across them — each team names its own in the
+     [data-team] blocks below, and tests/unit/nontext-contrast.test.mjs proves
+     every pair. This is also what keeps --accent decoration: the team colour is
+     the SURFACE, the ink on it is what carries the number. */
+  --accent-ink: var(--text);
+  /* Keyboard focus is WHITE, not brand red, for two independent reasons.
+     (1) Contrast: #e10600 on the near-black page measures ~2.6:1, under the
+         3:1 WCAG 1.4.11 / 2.4.11 asks of a focus indicator. White is ~19:1 on
+         the page and ~7:1 on the red primary button — legible on every surface
+         this UI has.
+     (2) Meaning: red already means SELECTED here (.sel-chip.active,
+         .track-row.active, .dh-dchip.active all carry a red ring or tint).
+         A red focus ring on an already-selected chip is invisible — the two
+         states rendered identically. Different colour, different meaning. */
+  --focus: #fff;
+
+  /* ---- ELEVATION, for a dark UI ----------------------------------------
+     A drop shadow is how you raise something off a LIGHT page; on a near-black
+     one it is invisible — there is nothing darker to cast. This panel was
+     #0c0c14 on a #0a0a0f page, two points apart, and leaned on a
+     0 16px 48px rgba(0,0,0,0.75) shadow nobody could see, so every layer read
+     as one flat plane.
+     Dark UIs signal height with SURFACE LIGHTNESS instead: the closer a
+     surface is, the lighter it gets. The ladder follows Material's dark-theme
+     overlay steps (~4 / 7 / 10% white).
+     --edge is the companion trick: a 1px lighter inset along the top edge,
+     reading as light falling from above and giving each layer a defined lip. */
+  --surf-1: color-mix(in oklab, #fff 4%, var(--bg));   /* sheets, panels */
+  --surf-3: color-mix(in oklab, #fff 11%, var(--bg));  /* popovers, raised rows */
+  /* Shared idle / selected plate — the settings tab-header recipe.
+     Neutral buttons, chips, and category tabs all read this so they stay
+     one family instead of each inventing a slightly brighter glass. */
+  /* Carbon tile, not milky glass — idle controls must read as objects on
+     the grain / live circuit, not as a 4.5% white wash. Hover/press step
+     toward steel so the press is a lightness change, not a new hue. */
+  --plate: color-mix(in oklab, var(--carbon) 62%, transparent);
+  --plate-line: rgba(255, 255, 255, 0.16);
+  /* The card/panel hairline — the second de-facto edge in the codebase after
+     --plate-line's 0.16 control edge. A hairline audit found 0.12 repeated
+     verbatim on card surfaces across career/data/menus while only the token
+     band above was named; naming it lets the sweep converge on two edges
+     (control 0.16, card 0.12) instead of forty ad-hoc alphas. */
+  --card-line: rgba(255, 255, 255, 0.12);
+  --plate-hover: color-mix(in oklab, var(--carbon) 78%, #fff 8%);
+  --plate-press: color-mix(in oklab, var(--carbon) 84%, #fff 12%);
+  --plate-on: color-mix(in oklab, var(--red) 18%, transparent);
+  /* NO trailing comment-closer here. A stray star-slash after the semicolon
+     of the declaration above sat exactly where the parser expects the next
+     declaration; CSS error recovery then discards everything to the next
+     semicolon — which was the end of --edge below, skipping straight through
+     the comment. --edge therefore never existed, and every
+     `box-shadow: var(--edge), var(--lift-2)` consumer (all 21 sheets,
+     .dh-card, the garage stack) computed to NONE: the elevation ladder
+     shipped visually inert until build 1548.
+     WRITE THE CLOSER AS "star-slash" IN PROSE, never literally: the first
+     version of THIS comment quoted the two characters verbatim, which closed
+     the comment mid-sentence and fed the rest to error recovery — eating the
+     next declaration (then --plate-on-glow, since retired). The bug's own
+     description reintroduced the bug one line lower (caught live, round 7). */
+  /* THE ONE SELECTED LOOK. A chosen chip / tab / pill / option anywhere in the
+     menus is `background: var(--plate-on); border-color: var(--red)` — and
+     nothing else: no glow, no side bar, no coloured word inside the control.
+     The old --plate-on-glow (inset red bar + 12px halo) was applied by nine
+     files and switched off again inside Settings, so the same .opt-btn lit two
+     different ways depending on the sheet it sat in. Colour WORDS (gold ON /
+     red OFF / green AUTO / cyan MANUAL via [data-fold]) are for READOUTS —
+     the closed fold summaries, the title-screen sound button — never for a
+     chip that is also ringed. Tiles use the STRONG tier below. A PREFERENCE
+     on a settings sheet is not a chip at all but a setting row — LABEL
+     ‹ VALUE › (css/components.css .set-row, js/ui/setting-row.js): the value
+     is the state, so it carries no ring. docs/COMPONENTS.md §Selection grammar. */
+  /* The STRONG selected wash — the picker-tile tier (team tile, career
+     flavour/seat, career slot). Three sites hand-mixed 16/24/24% washes with
+     12/14/16px glows at 28/36/38%; one pair of tokens makes the three tiles
+     one family. Distinct from --plate-on (18%, chips/tabs) on purpose: a
+     full-card selection reads at a higher tint than a chip. */
+  --plate-on-strong: color-mix(in oklab, var(--red) 24%, transparent);
+  --lift-sel: 0 0 14px color-mix(in oklab, var(--red) 36%, transparent);
+  /* Armed destructive fill — the career DELETE? treatment, shared by the
+     livery ✕ and the mid-season APPLY. Was rgba(225,6,0,0.35) pasted at
+     three sites that cross-referenced each other by comment. */
+  --armed-fill: color-mix(in oklab, var(--red) 35%, transparent);
+  /* Opaque plate — controls floating OVER the live 3D canvas (garage camera
+     trio, cam picker, tuner rails). Translucent-but-opaque on purpose: no
+     backdrop-filter over a rendering turntable. Was rgba(12,12,16,0.74)
+     pasted three times in carsetup.css with the same six-line comment. */
+  --plate-opaque: color-mix(in oklab, var(--carbon) 74%, transparent);
+  /* Screen scrims — the dim wash behind raised UI. One colour, six ad-hoc
+     alphas across five sheets; the two named rungs cover the exact repeats
+     (0.42 light dim, 0.92 near-solid backdrop). */
+  --scrim: rgba(6, 6, 10, 0.42);
+  --scrim-heavy: rgba(6, 6, 10, 0.92);
+  /* Podium metals — the P1/P2/P3 rows in the race-results screen and the data hub's RESULTS
+     table each hand-wrote the same three colours with slightly different wash
+     alphas. The metals are named once; each site keeps its own wash strength
+     via color-mix. */
+  --gold: #ffd700;
+  --silver: #c0c0c0;
+  --bronze: #cd9b5a;
+  /* Appearance preset art washes — theme-stable (LIGHT must not remappoint).
+     Sunlight once painted with --text/--dim and went near-black under LIGHT. */
+  --look-sunlight-hi: #f7e7a4;
+  --look-sunlight-lo: #e0b84a;
+  /* The fourth metal: the HUD's lime marks THE PLAYER wherever a table has a
+     "you" row. Named for the same reason as the metals; the tach gradient's
+     matching stop stays literal — a ramp's stops are chosen against each
+     other, not from the palette (see css/hud.css). */
+  --you: #aeea00;
+  --zone: #26a5f5; /* minimap DRS / active-aero stroke */
+  --ghost: #78dcff; /* minimap ghost dot */
+  /* TIMING COLOURS — the F1 timing-screen convention, as the 2026 tower
+     draws it: purple = session best (one holder, transfers), green =
+     personal best, yellow = slower than your own best; no reference yet
+     keeps the row's own ink. --faster/--slower are the HUD's existing
+     delta inks (ghost, gaps, data hub), named so every reader agrees. */
+  --faster: #a3e635;
+  --slower: #ff3b30;
+  /* The RED FLAG chip's field (css/hud.css #hud-flag.flag-red): a fixed flag
+     red like the yellow and the VSC amber, so COLOUR VISION never remaps it,
+     and dark enough that --hud-ink-light reads on it (5.6:1). */
+  --flag-red: #c8102e;
+  /* The HUD's dark halo — the recipe #hud-speed-n, .sec-val and .hud-energy-label
+     all spell out by hand so light ink stays legible over the live scene. Named
+     here so a new HUD readout can reach for it instead of restating the literal
+     (which is what the rawColor ratchet is counting). */
+  --hud-halo: 0 1px 3px rgba(0, 0, 0, 0.9);
+  /* SESSION BEST WAS THE HARDEST OF THE THREE TO READ, which is the wrong way
+     round: it marks the best lap you can set, on a 14px readout, at 300 km/h.
+     Measured in APCA (the contrast model that actually works on dark UI — WCAG
+     2 contrast "overstates contrast for dark colors to the point that 4.5:1 can
+     be functionally unreadable" and ignores font weight entirely):
+
+       --faster    #a3e635   Lc 79.4
+       --sec-slow  #f6d200   Lc 80.4
+       --sec-best  #c084fc   Lc 50.4   <- 30 Lc below its own siblings
+
+     APCA's ladder asks Lc 75 for 14px/700 body and Lc 60 for non-body, so the
+     two siblings clear the bar and the purple sat under both.
+
+     Lifted to Lc 65.1 with the HUE AND CHROMA DIRECTION UNTOUCHED — the OKLab
+     a and b are byte-identical, only L moves (0.722 -> 0.795), so it is the
+     same purple, lighter. It deliberately does NOT go all the way to its
+     siblings' ~79: that costs 38 % of the chroma (#fbbeff) and starts reading
+     PINK, and purple-means-session-best is a motorsport convention worth more
+     than the last 14 Lc. At 65 it keeps 80 % of the chroma.
+
+     CAVEAT ON THE NUMBERS: .sec-val carries the --hud-halo shadow declared just
+     above, and a dark halo raises effective contrast for light ink,
+     so these Lc values are a FLOOR rather than what the eye gets. All three
+     colours carry the same halo, which is why the 30 Lc gap between them is the
+     robust part and the absolute figures are not. tests/unit/apca-timing.test.mjs
+     pins the family relationship for that reason, not an absolute threshold. */
+  --sec-best: #dfa3ff;
+  --sec-slow: #f6d200;
+  /* The livery list's two-verb palette: DELETE is the warm danger family,
+     EDIT the cool info family. Ink is the light readable tint, fill the
+     saturated base the wash/hover/press states mix from — was 12 raw rgba()
+     literals on two buttons. */
+  /* GAS LIT — the pedal's pressed green. Two states wear it now (`:active`
+     under the thumb, `.on` for a held LATCH), so it is one name rather than
+     the same literal twice. */
+  --gas-lit: rgba(0, 210, 90, 0.95);
+  --del-ink: rgba(255, 120, 110, 0.85);
+  --del-fill: rgb(255, 60, 50);
+  --edit-ink: rgba(120, 200, 255, 0.9);
+  --edit-fill: rgb(60, 150, 255);
+  /* A lit lip along the top AND the far edge falling into shade. The lip on
+     its own reads as a sticker laid on the page; the pair reads as a slab with
+     thickness, which is the whole point of an elevation system. */
+  --edge: inset 0 1px 0 rgba(255, 255, 255, 0.08), inset 0 -1px 0 rgba(0, 0, 0, 0.45);
+  /* Shadows come in LAYERS, not one blur. A single 44px shadow is a smudge:
+     real light gives a small tight core right under the object and a wide soft
+     ambient falloff, and it is the tight one that says "this is lifted" while
+     the wide one says "by how much". One stop can only do one of those jobs.
+     (Still cast at all because this game shows its sheets against a bright 3D
+     scene, where a shadow does read.) */
+  --lift-2:
+    0 2px 4px rgba(0, 0, 0, 0.45),
+    0 12px 30px rgba(0, 0, 0, 0.5),
+    0 26px 56px rgba(0, 0, 0, 0.35);
+
+  /* ---- GRADIENTS ----------------------------------------------------
+     Every one of these interpolates `in oklab`. sRGB interpolation walks a
+     straight line through a colour cube that is not perceptually uniform, so a
+     saturated ramp sags through a muddy, desaturated middle — most visible on
+     exactly the long red ramps this UI is made of. oklab is perceptually
+     uniform, so the midpoint stays as red as the ends, and the ramp needs
+     fewer stops to look smooth.
+
+     They are TOKENS because there were seventeen hand-written gradients across
+     the stylesheets and no two primary surfaces used the same one. */
+  /* LARGE FILLS ARE DARKER THAN THE INK. #e10600 is the brand, and it stays the
+     brand for text, rules, ticks and 1px rings — small marks need every bit of
+     that luminance to read. Spread across a 340px button it is a different
+     thing: a big saturated red field on near-black glares, blooms on an OLED,
+     and drags the eye off whatever the button is sitting next to. Knocking ~14%
+     of the lightness out for FILLS ONLY keeps the hue exactly and calms the
+     area, and white on it still measures over 5:1.
+     Derived with color-mix rather than a second hex so there is still one red:
+     change --red and the fills follow. */
+  --red-fill: color-mix(in oklab, var(--red) 90%, #1a0008);
+  --grad-primary:     linear-gradient(135deg in oklab,
+                        color-mix(in oklab, var(--red-fill) 76%, #fff) 0%,
+                        color-mix(in oklab, var(--red-fill) 74%, #000) 100%);
+  --grad-primary-hot: linear-gradient(135deg in oklab,
+                        color-mix(in oklab, var(--red-fill) 58%, #fff) 0%,
+                        color-mix(in oklab, var(--red-fill) 84%, #000) 100%);
+  /* The wash every sheet head carries: a brand bleed from the leading edge over
+     a light-from-above sheen. It is what makes a dialog look like part of this
+     game rather than a generic card. */
+  --grad-head:
+    linear-gradient(90deg in oklab, color-mix(in oklab, var(--red) 34%, transparent), transparent 56%),
+    linear-gradient(180deg in oklab, rgba(255, 255, 255, 0.07), transparent 72%);
+  /* A rule that FADES instead of stopping dead — used as a background-image on
+     the bottom 1px, so it needs no extra element. Starts on brand so every
+     sheet hairline belongs to the same family. */
+  --grad-rule: linear-gradient(90deg in oklab, color-mix(in oklab, var(--red) 58%, rgba(255, 255, 255, 0.22)), rgba(255, 255, 255, 0.04) 78%, transparent);
+  /* Team identity, wherever a surface should carry it. Resolves through
+     --accent, so it re-skins itself the moment the player changes team. */
+  --grad-accent: linear-gradient(150deg in oklab,
+    color-mix(in oklab, var(--accent) 18%, transparent), transparent 62%);
+
+  /* Dither. A large, slow, dark gradient is the worst case for an 8-bit
+     display: too few distinct values across too many pixels, so it renders as
+     visible stripes — and this app's backdrop is a 120%-wide radial red wash
+     over near-black, which is that case exactly. A few percent of noise breaks
+     the bands into grain the eye reads as texture. feTurbulence in a data URI
+     keeps it to one tiled 160px tile and no network request. */
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+
+  /* MOTION. Steps, not a continuum: 1 = press/hover feedback, 3 = a panel or
+     sheet entering, 4 = a screen-sized move; --dur-draw is the slow one-shot (a
+     line or ring drawing itself). A step either reads as instant or as travel —
+     values in between just look undecided. --ease-out is for anything ARRIVING
+     (fast start, long soft landing — it answers the input at once). Only tokens
+     something reads live here (tests/unit/css-tokens.test.mjs): a --dur-2, an
+     --ease-in-out, a --motion multiplier and a twelve-step OKLCH red ramp were
+     drafted with these and cut until a rule needs them. Reduced motion is not
+     a token: it is html[data-motion="reduce"] (js/ui/title-fx.js) and the
+     prefers-reduced-motion backstop above, both in !important rules. */
+  --dur-1: 120ms;
+  --dur-3: 320ms;
+  --dur-4: 600ms;
+  --dur-draw: 1400ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  /* The fallback: without linear() a spring cannot be written in CSS, and
+     ease-out is the same arrival without the bounce. The real curve is in the
+     @supports block below. */
+  --ease-spring: var(--ease-out);
+}
+
+/* THE SPRING, as linear(): 25 evenly spaced samples of a damped spring
+     x(t) = 1 - e^(-zeta*w*t) * (cos(wd*t) + (zeta*w/wd) * sin(wd*t)),
+     wd = w * sqrt(1 - zeta^2),  w = 9.3,  zeta = 0.667,  t in [0, 1].
+   zeta comes from the overshoot: e^(-zeta*pi/sqrt(1-zeta^2)) = 0.06 is a 6%
+   peak (at t ~ 0.45), enough to read as physical, not enough to look loose.
+   w puts the envelope at 0.3% by t = 1, so pinning the last stop to exactly 1
+   is an invisible step, not a snap. Values rounded to 3 dp. Regenerate from
+   the formula, never hand-nudge a stop. Duration is the caller's (--dur-3 or
+   --dur-4 — at --dur-1 a bounce is noise). */
+@supports (animation-timing-function: linear(0, 1)) {
+  :root {
+    --ease-spring: linear(0, 0.063, 0.209, 0.388, 0.565, 0.721, 0.847, 0.939,
+      1.001, 1.038, 1.056, 1.06, 1.055, 1.046, 1.035, 1.025, 1.016, 1.008,
+      1.003, 1, 0.998, 0.997, 0.996, 0.997, 1);
+  }
+}
+
+/* THE TOUCH LADDER. The tokens above are a FLOOR (44px is the smallest box
+   Apple's HIG and WCAG 2.5.5 accept) and a phone was being handed the floor —
+   the same targets as a mouse pointer that can hit 20px. `body:not(.desktop)`
+   is the test game.js applies via Input.touchControlsNeeded(), where it sets
+   the `desktop` class on <body>. */
+body:not(.desktop) {
+  --tap: max(52px, calc(24px / var(--ui-scale)));
+  /* 48, not 46: --chip-h is LOCAL px inside the sheets' zoom (--ui-scale
+     1.09 on a coarse pointer), and 46 x 1.09 painted 50 — two short of the
+     52 floor this ladder sets. MEASURED 2026-10-05, ios-iphone-landscape
+     734x343: the circuit picker's ALL / SEASON / CLASSICS, search and detail
+     chips, all 95 SEASON SETUP chips, the circuit card's favourite, the
+     garage's FREE BUILD / INSPECT chips and the pause tool tray at 50x50.
+     48 x 1.09 paints 52.3. Still one rung under --tap: a chip is secondary.
+     ...EXCEPT AT UI SIZE 100 %, where 48 local px paints 48. MEASURED
+     2026-10-05 (layout-audit, ios-iphone-landscape 734x343 @100): the circuit
+     picker's five toolbar chips, all 95 SEASON SETUP chips and the garage's
+     FREE BUILD at 48 tall, four under the floor. The middle arm is
+     min(52/s, 52 x s): it is exactly 52 at s = 1 and falls away on both sides
+     — 52/s reaches 48 at s = 1.083 (the 48 arm takes over and paints >= 52),
+     52 x s reaches 48 at s = 0.923 (under 100 % the player asked for a SMALLER
+     UI and --tap itself paints under 52, so the chip keeps its rung). So the
+     chip meets the floor at every s >= 1 and nothing moves outside 92-108 %;
+     at exactly 100 % it is as tall as --tap, which is the price of the floor.
+     The 24/s arm is the WCAG floor at small scales. */
+  --chip-h: max(48px, min(calc(52px / var(--ui-scale)), calc(52px * var(--ui-scale))), calc(24px / var(--ui-scale)));
+  --tap-sm: max(36px, calc(24px / var(--ui-scale)));
+  /* --tap-paint (see :root): 52 PAINTED px, local = 52 / --ui-scale. The 24px
+     arm keeps the WCAG floor where the division would undercut it. */
+  --tap-paint-at: 52px;
+  --tap-paint: max(24px, calc(var(--tap-paint-at) / var(--ui-scale)));
+  --tap-0: var(--tap);         /* the touch values, frozen here too (see :root) */
+  --chip-h-0: var(--chip-h);
+  /* Same ≥14 CSS floor as :root — 13px under .sheet zoom 0.9 paints 11.7. */
+  --label: 14px;
+}
+
+/* --ui-scale — HOW BIG THE UI IS, as one number, consumed as a `zoom` by the
+   menu sheets and the in-race clusters (css/components.css, css/hud.css).
+
+   ZOOM IS THE ONLY LEVER, AND THE TOKENS ABOVE DELIBERATELY DO NOT USE IT.
+   Scaling the tokens as well would DOUBLE-COUNT: every token above is consumed
+   inside a sheet, and a zoomed subtree already scales the lengths it inherits —
+   --tap: 52px inside zoom 1.15 paints at 59.8px on its own. Multiply first and
+   it paints at 68.8px. Nor can it be neutralised locally, because a token's
+   calc() is substituted where it is DECLARED (up here), not where it is used.
+   One mechanism per layer, and for anything inside a sheet the mechanism is
+   zoom.
+
+   ON :root, so the `zoom` declarations and js/game.js agree on one element.
+   `(pointer: coarse)` is the same question Input.touchControlsNeeded() asks, so
+   the CSS default and the JS default cannot disagree — and unlike the
+   `.desktop` class, which is added at boot, it is right on the FIRST paint.
+
+   1.0 is the shipped default on every pointer. Touch used to ship at 1.15, and
+   UI SIZE's floor briefly sat at 90% then 80% — players still pegged the
+   slider left and wanted more "zoom out". Floor is 40%; default stays 100%.
+   SETTINGS ▸ DISPLAY ▸ UI SIZE still goes up to 200%.
+
+   SHORT/NARROW VIEWPORTS NEED TWO ANSWERS. Scaling every gap, inset and target
+   all the way to 200% leaves a phone showing one enormous button; refusing the
+   setting would make the accessibility control dishonest. The title screen
+   therefore caps only its compact GEOMETRY at 125%, then multiplies its text by
+   the residual ratio. At 200%, chrome paints at 1.25x while type still paints at
+   1.25 * 1.6 = 2x. Wide/tall screens continue to consume --ui-scale directly. */
+:root {
+  --ui-scale: 1; --hud-scale: 1;
+  /* Independent control scale; touch has a fixed larger default below. */
+  --hud-btn-scale: 1;
+  /* TOUCH BUTTON OPACITY (XAG 104 asks for an adjustable 0-100 % backing behind
+     anything read over live gameplay). 1 = unchanged, so an untouched slider
+     costs nothing; js/ui/scale.js only sets the property once the player moves
+     it, exactly as --hud-btn-scale works. */
+  --hud-btn-opacity: 1;
+  /* HUD PANEL OPACITY (Settings › Display › HUD), the same XAG 104 backing
+     control for the dark plates behind the readouts. js/ui/scale.js writes
+     --hud-panel-a inline on <html> only once the player moves the slider, so
+     unset this is 1 and every plate keeps its shipped alpha. css/hud.css
+     multiplies each plate's alpha by the EFFECTIVE value below, which HIGH
+     CONTRAST pins at 1 (its block further down) — solid plates always win.
+     FLOORED at 0.45: every plate that takes this carries text, and the
+     slider's 20 % put the 0.55 gap plate at 0.11 alpha — white ink straight
+     on a sunlit sky. Below 45 % the slider changes nothing; unset is still 1. */
+  --hud-panel-a-eff: max(0.45, var(--hud-panel-a, 1));
+  --ui-compact-brand-scale: min(var(--ui-scale), 1);
+  --ui-compact-scale: min(var(--ui-scale), 1.25);
+  --ui-compact-brand-text: calc(var(--ui-scale) / var(--ui-compact-brand-scale));
+  --ui-compact-text: calc(var(--ui-scale) / var(--ui-compact-scale));
+}
+/* THE TOUCH-ONLY DEFAULT this block was reserved for. Filled in 2026-09-08 from
+   the owner's own phone — HUD 1.24 and buttons 1.4536x that, i.e. 1.80 — and
+   CORRECTED 2026-09-14, because those numbers put the driving controls on top of
+   the readouts on every phone.
+
+   WHAT WENT WRONG. The pedals rendered 130px = ~34mm: 2.3x Microsoft's suggested
+   MINIMUM touch target for phones (15mm) and past their minimum for TABLETS
+   (24mm), with the stacked column eating 58% of a 393px short edge. #btn-brake
+   covered 119x53px of #minimap and #btn-boost covered 59x84px of #hud-sectors,
+   at both 852x393 and 667x375. tests/specs/hud-layout.spec.js had been red on
+   those cases ever since, unnoticed because test:ui is not in the fast tier.
+
+   WHY A SINGLE BRANCH WAS THE MISTAKE. The standards treat two things as
+   SEPARATE requirements with different justifications: interactive TARGET SIZE
+   has a physical floor (~15mm phone / 24mm tablet per XAG 107; 0.96cm per the
+   Game Accessibility Guidelines; 48dp per Android), while READOUT size has a
+   legibility floor expressed in px-at-DPI (XAG 101). One `(pointer: coarse)`
+   rule raised both, so the controls grew into the readouts.
+
+   Note also what XAG's mobile numbers actually are: 18px @100 DPI, 36px @200,
+   72px @400, "scale linearly as DPI increases". That is a DPI correction holding
+   PHYSICAL size constant — not a "touch devices get a bigger UI" rule. No
+   published guidance prescribes a numeric coarse-pointer scale multiplier at
+   all; 1.24/1.80 had no standard behind it.
+
+   THE RULE NOW: the DEFAULT is a floor, the RANGE is generous. XAG 101 calls its
+   sizes "the minimum default size ... upon game launch" and asks for scaling
+   "larger or smaller at the player's discretion"; the Game Accessibility
+   Guidelines say "ensuring a good default size should always be the first port
+   of call". So --hud-scale sits at 1 and the readouts are DPI-correct rather
+   than bumped, while the buttons keep a modest ratio over it that satisfies the
+   physical floor: 1.25 renders the pedals at ~90px (~24mm, the GAG ideal) and
+   the secondary column at ~68px (~18mm, over the 15mm floor). 1.80 is still
+   reachable — it is a slider, and a player who wants the old size has it.
+
+   --ui-scale stays 1.09. It is menus only, nothing there overlaps at any scale
+   this ships, and moving it would be a look change with no defect behind it.
+
+   BUTTON SIZE has its own fixed touch default; HUD SIZE never moves it.
+   scaleDefault()/scaleDefaultFor() in js/ui/scale.js mirror these numbers under
+   the same query, so first paint and the first JS write agree (the note above);
+   tests/unit/scale-defaults.test.mjs holds the two in lockstep. */
+@media (pointer: coarse) {
+  /* Fixed touch-control default; HUD SIZE does not move this axis. */
+  :root {
+    --ui-scale: 1.09; --hud-scale: 1;
+    --hud-btn-mult: 1.25;
+    --hud-btn-scale: var(--hud-btn-mult);
+  }
+}
+
+/* VIEWPORT UNITS ARE THE ONE UNIT FAMILY `zoom` GETS WRONG, so inside a zoomed
+   subtree they need dividing by the same scale. Everything else behaves —
+   measured in Chromium 141 at 844x390 under `zoom: 1.3`:
+
+     width: 340px  -> 442.0px   scales, as intended
+     width: 5.2em  -> 87.9px    scales, as intended
+     width: 78%    -> 658.3px   safe (a share of an already-scaled parent)
+     width: 78vw   -> 855.8px   OVERFLOWS an 844px viewport
+
+   A viewport unit resolves against the UNZOOMED viewport and is then multiplied
+   by the zoom, so `78vw` renders as 101vw. Shipped consequence, measured on the
+   title screen in portrait at 393x852: `min(78vw, 340px)` takes its vw branch
+   (306px), and at UI SIZE 130 % the button column rendered 398.5px wide with its
+   right edge 17.5px off screen; at 150 %, 78.8px off. The CSS width never
+   changed — 306.5px at every setting — which is exactly why it does not read as
+   a sizing bug when you look at the stylesheet.
+
+   THE SECOND TRAP IS IN JAVASCRIPT, and it has no CSS symptom at all. The
+   standardised `zoom` (CSS Viewport L1) says getBoundingClientRect and friends
+   "must return rects with SCALED lengths", while computed-style APIs report
+   non-auto, non-percentage lengths UNSCALED. So inside a zoomed subtree a
+   rect's width and the same element's computed width are two different
+   coordinate spaces, and any code that compares one to the other is wrong by
+   exactly the zoom factor — silently, and only for players who moved the
+   slider off 100 %.
+   Audited 2026-09-14: six files read both, but every computed read is a
+   NON-LENGTH (visibility, z-index, overflow-y, display, a custom property) and
+   the one site that does compare lengths — metrics-overlay.js's fitsWide(),
+   which measures a ch probe with a rect and compares it against the computed
+   width and padding of its panel — lives on #game-metrics,
+   which is not in any zoom group. Correct today by luck of placement rather than
+   by construction, so: if you ever put a length comparison inside `.sheet`,
+   `#overlay > *`, a HUD cluster or `.dock`, measure BOTH sides with rects.
+   (Chrome 128 also widened what `zoom` inherits into — it now applies to every
+   inherited length property, not just font-size — so a layout tuned before it
+   can render differently now. caniuse's support cells do not distinguish the
+   legacy implementation from the standardised one.)
+
+   `100 * var(--vwz)` is "100vw, as rendered". Use it for ANY viewport-unit
+   length inside a `.sheet`, `#overlay > *`, a HUD cluster or `.dock`; use the
+   bare unit everywhere else, where it is correct and cheaper. The safe-area
+   insets in hud.css already do this by hand (`var(--sat) / var(--hud-scale)`) —
+   same correction, same reason.
+
+   There are TWO PAIRS because there are two scales. The `z` pair is the MENU
+   layer (--ui-scale: .sheet, #overlay > *); the `zh` pair is the DRIVING layer
+   (--hud-scale: the HUD clusters, .dock). Using the wrong one is worse than
+   using none — it divides by a number the player can move independently.
+   The audit that found this turned up exactly one HUD-layer site, #announce's
+   font-size in hud.css, whose `top` on the line above was already divided by
+   --hud-scale by hand while its 8vw was not. */
+:root {
+  --vwz:   calc(1vw  / var(--ui-scale));
+  --vhz:   calc(1vh  / var(--ui-scale));
+  --svhz:  calc(1svh / var(--ui-scale));
+  --vwzh:  calc(1vw  / var(--hud-scale));
+}
+
+/* Per-team accents (ids + colours from js/car/teams.js — vivid brand colour of
+   each team; dark liveries use their secondary accent so it reads on --bg).
+   --accent-ink is the ink for the radio card's number plate, which is the one
+   surface painted --accent. It is NOT a style choice: it is whichever of
+   the fixed dark-HUD neutrals #f6f6f9 / #0c0c14 measures further from that team's accent, and the ratio is in
+   the comment. Fixed neutrals keep the ink legible when menu themes change.
+   Nothing here may be hand-picked — change an accent and re-run
+   tests/unit/nontext-contrast.test.mjs, which recomputes both candidates. */
+:root[data-team="mercedes"]    { --accent: #00b4ab; --accent-ink: var(--hud-ink-dark); }    /*  7.53:1 */
+:root[data-team="ferrari"]     { --accent: #dc0000; --accent-ink: var(--hud-ink-light); }  /*  4.82:1 */
+:root[data-team="mclaren"]     { --accent: #ff8000; --accent-ink: var(--hud-ink-dark); }    /*  7.73:1 */
+:root[data-team="redbull"]     { --accent: #ffd700; --accent-ink: var(--hud-ink-dark); }    /* 13.88:1 */
+:root[data-team="alpine"]      { --accent: #0093cc; --accent-ink: var(--hud-ink-dark); }    /*  5.61:1 */
+:root[data-team="racingbulls"] { --accent: #1634cb; --accent-ink: var(--hud-ink-light); }  /*  8.15:1 */
+:root[data-team="haas"]        { --accent: #da291c; --accent-ink: var(--hud-ink-light); }  /*  4.51:1 */
+:root[data-team="williams"]    { --accent: #0f3cc9; --accent-ink: var(--hud-ink-light); }  /*  7.76:1 */
+:root[data-team="audi"]        { --accent: #fa470d; --accent-ink: var(--hud-ink-dark); }    /*  5.54:1 */
+:root[data-team="astonmartin"] { --accent: #b7e11b; --accent-ink: var(--hud-ink-dark); }    /* 12.80:1 */
+:root[data-team="cadillac"]    { --accent: #f5f5f5; --accent-ink: var(--hud-ink-dark); }    /* 17.86:1 */
+
+/* ---- APPEARANCE: menu accent presets (SETTINGS › APPEARANCE) ------------
+   Re-point --red only. Fills/grads/selection washes derive via color-mix, so
+   the whole chrome family follows. brand = shipped default (no override).
+   team / custom are applied as concrete --red from js/ui/appearance-opts.js. */
+:root[data-menu-accent="ember"]  { --red: #ff4d1a; }
+:root[data-menu-accent="amber"]  { --red: #ffb000; }
+:root[data-menu-accent="cyan"]   { --red: #00a3e0; }
+:root[data-menu-accent="violet"] { --red: #7a5cff; }
+:root[data-menu-accent="lime"]   { --red: #b7e11b; }
+
+/* ---- APPEARANCE: light / system theme ----------------------------------
+   Light rewrites the surface ladder; SYSTEM follows the OS preference. */
+:root[data-ui-theme="light"] {
+  color-scheme: light;
+  --bg: #f0f0f4;
+  --carbon: #e6e6ec;
+  --text: #14141c;
+  --dim: #5a5a68;
+  --panel: color-mix(in oklab, #fff 78%, var(--carbon));
+  --surf-1: color-mix(in oklab, #000 3.5%, var(--bg));
+  --surf-3: color-mix(in oklab, #000 8%, var(--bg));
+  --plate: color-mix(in oklab, var(--carbon) 70%, transparent);
+  --plate-line: rgba(20, 20, 28, 0.16);
+  --card-line: rgba(20, 20, 28, 0.12);
+  --plate-hover: color-mix(in oklab, var(--carbon) 82%, #000 6%);
+  --plate-press: color-mix(in oklab, var(--carbon) 88%, #000 10%);
+  --plate-opaque: color-mix(in oklab, #fff 86%, var(--carbon));
+  --scrim: rgba(20, 20, 28, 0.28);
+  --scrim-heavy: rgba(20, 20, 28, 0.72);
+  --hud-halo: 0 1px 3px rgba(255, 255, 255, 0.85);
+  --edge: inset 0 1px 0 rgba(255, 255, 255, 0.65), inset 0 -1px 0 rgba(0, 0, 0, 0.08);
+  --focus: #111118;
+  --red-fill: color-mix(in oklab, var(--red) 86%, #3a0000);
+  /* Gold ON / podium metal must read on light plates (Sound ON, fold
+     summaries, garage status). Shipped #ffd700 is ~1.4:1 on --bg /
+     --plate-opaque; #7a5600 clears 4.5:1 on those grounds. */
+  --gold: #7a5600;
+}
+@media (prefers-color-scheme: light) {
+  :root[data-ui-theme="system"] {
+    --bg: #f0f0f4;
+    --carbon: #e6e6ec;
+    --text: #14141c;
+    --dim: #5a5a68;
+    --panel: color-mix(in oklab, #fff 78%, var(--carbon));
+    --surf-1: color-mix(in oklab, #000 3.5%, var(--bg));
+    --surf-3: color-mix(in oklab, #000 8%, var(--bg));
+    --plate: color-mix(in oklab, var(--carbon) 70%, transparent);
+    --plate-line: rgba(20, 20, 28, 0.16);
+    --card-line: rgba(20, 20, 28, 0.12);
+    --plate-hover: color-mix(in oklab, var(--carbon) 82%, #000 6%);
+    --plate-press: color-mix(in oklab, var(--carbon) 88%, #000 10%);
+    --plate-opaque: color-mix(in oklab, #fff 86%, var(--carbon));
+    --scrim: rgba(20, 20, 28, 0.28);
+    --scrim-heavy: rgba(20, 20, 28, 0.72);
+    --hud-halo: 0 1px 3px rgba(255, 255, 255, 0.85);
+    --edge: inset 0 1px 0 rgba(255, 255, 255, 0.65), inset 0 -1px 0 rgba(0, 0, 0, 0.08);
+    --focus: #111118;
+    --red-fill: color-mix(in oklab, var(--red) 86%, #3a0000);
+    --gold: #7a5600;
+  }
+}
+:root[data-ui-theme="system"] { color-scheme: dark light; }
+/* ---- APPEARANCE: text size + high contrast (js/ui/appearance-opts.js) ----
+   TEXT SIZE re-states the --fs-* ladder, so every token consumer grows and the
+   bare-px HUD (its own HUD SIZE) does not. --fs-micro stays the floor the
+   token-adoption guard reads from the :root block above. */
+/* The Appearance preview's HUD sample paints like the real HUD (css/hud.css:
+   near-black plate, white ink) in EVERY theme — the race HUD does not follow
+   LIGHT, so a light-ink sample would preview something the player never sees. */
+:root {
+  --look-hud-bg: rgba(8, 8, 14, 0.78);
+  --look-hud-ink: #fff;
+  --look-hud-dim: rgba(255, 255, 255, 0.7);
+  --look-hud-halo: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+:root[data-text-size="large"] {
+  --fs-micro: 16px; --fs-2: 17px; --fs-3: 18px; --fs-4: 20px; --fs-5: 21px; --fs-6: 23px;
+  --hud-text-boost: 1.10;
+}
+:root[data-text-size="larger"] {
+  --fs-micro: 18px; --fs-2: 20px; --fs-3: 21px; --fs-4: 22px; --fs-5: 23px; --fs-6: 26px;
+  --hud-text-boost: 1.18;
+}
+/* COLOUR VISION (js/ui/appearance-opts.js): remap semantic ink used by the HUD
+   and menus. Same hues as the Tol/IBM-safe triples (matches the driving-line
+   COLOUR-BLIND palette intent without filtering the 3D canvas), LIGHTENED for
+   the always-dark HUD plate: the published values (#0077bb, #cc3311) are a
+   white-paper palette and measured ~3:1 on rgb(8 8 14 / .72) over a mid-grey
+   scene. Every ink here clears 4.5:1 there (tests/unit/apca-timing.test.mjs).
+   --red stays the dark accent: it is never HUD ink (see that test).
+   WARN IS NOT HIT: --sec-slow (a warning, a penalty WARN, damage level 1) and
+   --slower (a penalty HIT, damage level 3) once shared #ee7733 under deutan /
+   protan, which merged penalty-warn with penalty-hit on the radio card and
+   turned damage level 2 — a 50/50 mix of the two — into the same colour as
+   both. Tol's sand #ddcc77 keeps the yellow "caution" meaning and sits well
+   above either red in LIGHTNESS, the one channel every dichromacy keeps
+   (tritan's #ff6a4d / #ee7733 were ~0.01 apart in OKLab L).
+   --you and --sec-best were retuned so they stay apart from --slower under the Machado simulation. */
+:root[data-cvd="deutan"],
+:root[data-cvd="protan"] {
+  --faster: #4aa3ff;
+  --slower: #ee7733;
+  --sec-slow: #ddcc77;
+  --sec-best: #c8f4ff;
+  --you: #ff9ec8;
+  --zone: #7ec8ff;
+  --ghost: #ffffff;
+  --red: #cc3311;
+}
+:root[data-cvd="tritan"] {
+  --faster: #00e0c0;
+  --slower: #ff9eb0;
+  --sec-slow: #ffe56a;
+  --sec-best: #e8fff4;
+  --you: #ff5c96;
+  --zone: #00e0c0;
+  --ghost: #ffffff;
+}
+/* HIGH CONTRAST: solid plates instead of see-through ones, secondary text near
+   full strength, lines that read as lines. Theme-relative, so LIGHT + HIGH
+   darkens where DARK + HIGH brightens. */
+:root[data-ui-contrast="high"] {
+  --dim: color-mix(in oklab, var(--text) 86%, var(--bg));
+  --plate: color-mix(in oklab, var(--carbon) 96%, transparent);
+  --plate-opaque: color-mix(in oklab, var(--carbon) 98%, transparent);
+  --plate-line: color-mix(in oklab, var(--text) 55%, transparent);
+  --card-line: color-mix(in oklab, var(--text) 40%, transparent);
+  --hc-hud-plate: color-mix(in oklab, #000 92%, transparent);
+  --hc-hud-line: rgba(255, 255, 255, 0.55);
+  --hud-panel-a-eff: 1;   /* PANEL OPACITY never thins a HIGH CONTRAST plate */
+  --hud-halo: 0 0 2px #000, 0 1px 3px #000;
+  --look-hud-bg: var(--hc-hud-plate);
+  --look-hud-dim: var(--look-hud-ink);
+}
+/* THE RACE CHROME IS DARK IN EVERY THEME. Its plates are dark — literal
+   rgb(8 8 14 / …) in css/hud.css, or --plate-opaque — so LIGHT's ink tokens
+   (a white --hud-halo, a mid-grey --dim, dark hairlines, a light --bg used as
+   ink on --you) and LIGHT's plates (--plate-opaque at #fbfbfc) must never
+   reach it. Custom properties resolve where they are DECLARED, so a light
+   --plate-opaque arrives at #hud already computed from the light --carbon:
+   restating --text alone (the first cut of this block) left RELATIVE,
+   STRATEGY, INPUTS, the MIRROR chip, the blue flag and the broadcast tower at
+   ~1.05:1 on a near-white plate, and #announce / #game-metrics (siblings of
+   #hud, not children) got no restatement at all.
+   So ONE scope, unconditional: every token the light block re-points is
+   restated here with its :root (dark) value, on every in-race overlay root.
+   In the dark theme this is a no-op; tests/unit/nontext-contrast.test.mjs
+   pins that each value equals the :root one and resolves every overlay's ink
+   on its plate under LIGHT, SYSTEM-light and LIGHT + HIGH CONTRAST. Same move
+   as .touchbtn in css/touch-controls.css. */
+:is(#hud, #announce, #game-metrics) {
+  color-scheme: dark;
+  --bg: #0c0c14;
+  --carbon: #15151E;
+  --text: #f6f6f9;
+  --dim: #9a9aa8;
+  --panel: color-mix(in oklab, #fff 5%, color-mix(in oklab, var(--carbon) 88%, transparent));
+  --surf-1: color-mix(in oklab, #fff 4%, var(--bg));
+  --surf-3: color-mix(in oklab, #fff 11%, var(--bg));
+  --plate: color-mix(in oklab, var(--carbon) 62%, transparent);
+  --plate-line: rgba(255, 255, 255, 0.16);
+  --card-line: rgba(255, 255, 255, 0.12);
+  --plate-hover: color-mix(in oklab, var(--carbon) 78%, #fff 8%);
+  --plate-press: color-mix(in oklab, var(--carbon) 84%, #fff 12%);
+  --plate-opaque: color-mix(in oklab, var(--carbon) 74%, transparent);
+  --scrim: rgba(6, 6, 10, 0.42);
+  --scrim-heavy: rgba(6, 6, 10, 0.92);
+  --hud-halo: 0 1px 3px rgba(0, 0, 0, 0.9);
+  --edge: inset 0 1px 0 rgba(255, 255, 255, 0.08), inset 0 -1px 0 rgba(0, 0, 0, 0.45);
+  --focus: #fff;
+  --red-fill: color-mix(in oklab, var(--red) 90%, #1a0008);
+  /* LIGHT remaps --gold for menu plates; race chrome keeps the bright metal. */
+  --gold: #ffd700;
+  /* and the INHERITED ink: .hud-value, #hud-speed and friends set no colour of
+     their own, so they would inherit body's already-resolved (light) --text. */
+  color: var(--text);
+}
+/* HIGH CONTRAST inside the scope: the :root block's own expressions, which
+   re-resolve here against the dark --text/--bg/--carbon above. Without it the
+   unconditional restatement would undo HIGH CONTRAST on the HUD in DARK too. */
+:root[data-ui-contrast="high"] :is(#hud, #announce, #game-metrics) {
+  --dim: color-mix(in oklab, var(--text) 86%, var(--bg));
+  --plate: color-mix(in oklab, var(--carbon) 96%, transparent);
+  --plate-opaque: color-mix(in oklab, var(--carbon) 98%, transparent);
+  --plate-line: color-mix(in oklab, var(--text) 55%, transparent);
+  --card-line: color-mix(in oklab, var(--text) 40%, transparent);
+  --hud-halo: 0 0 2px #000, 0 1px 3px #000;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box;
+  /* iPhone home-screen / Safari: kill the gray tap flash, the blue text
+     selection, the long-press Copy/Look Up sheet, and image-drag ghosts.
+     HUD labels and menu chrome must not highlight under a thumb. Real
+     fields opt back in below; tuner .sp-uri already does the same.
+     manipulation (not none, not auto): drop double-tap-to-zoom, which
+     blows the standalone PWA layout, while menus keep pan-y / pan-x via
+     their own rules. Driving already sets none on #game and in-race HUD. */
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none; user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-user-drag: none;
+  touch-action: manipulation;
+}
+
+/* Team / driver names, invite codes, Spotify id — the only strings a
+   thumb is meant to select. Range/color/file inputs inherit this too;
+   they have nothing to highlight, so it is harmless. */
+input, textarea, [contenteditable] {
+  -webkit-user-select: text; user-select: text;
+  -webkit-touch-callout: default;
+}
+
+html, body {
+  width: 100%; height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  /* Stop WebKit's text autosizing from inflating menu type when a block is wide
+     relative to the viewport. The menus are laid out to the pixel at 390-430px
+     of height; a browser-chosen font scale silently overflows every one of
+     them, and it is orientation-dependent, so it only bites in landscape. */
+  -webkit-text-size-adjust: 100%; text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  /* No root rubber-band / scroll chaining (Safari 26's floating tab bar
+     collapses on root scroll gestures, which reads as the whole game bouncing).
+     manipulation, not auto: auto is what lets iOS double-tap-zoom the PWA. */
+  overscroll-behavior: none;
+  touch-action: manipulation;
+}
+
+#game {
+  position: fixed; inset: 0;
+  width: 100%; height: 100%;
+  display: block;
+  /* Driving owns its gestures; menus retain native pan, selection and pinch
+     zoom instead of inheriting a page-wide interaction lock. */
+  touch-action: none;
+  -webkit-user-select: none; user-select: none;
+  -webkit-touch-callout: none;
+}
+/* Visor rain (js/fx/droplets.js): above #game/#game-soft (1), below the HUD (10). */
+#fx-droplets { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; }
+#fx-droplets[hidden] { display: none; }
+
+body.in-race .touchbtn,
+body.in-race #hud,
+body.in-race #pausebtn,
+body.in-race #btn-cam {
+  -webkit-user-select: none; user-select: none;
+  -webkit-touch-callout: none;
+  /* Two thumbs (GAS + a turn arrow) must not become a pinch/pan that
+     pointercancel's the first hold — #game already opts out; the HUD
+     chrome did not, which is why throttle died when a second finger
+     went down. */
+  touch-action: none;
+}
+
+h1, h2, .hud-value, .bigbtn {
+  font-weight: 800;
+  font-style: italic;
+  letter-spacing: 0.04em;
+}
+
+button {
+  font: inherit;
+  color: var(--text);
+  background: var(--plate);
+  border: 1px solid var(--plate-line);
+  border-radius: var(--r-md);
+  padding: 10px 18px;
+  cursor: pointer;
+  transition: background 0.14s, box-shadow 0.14s;
+}
+/* :hover is gated on a real hover pointer: on iOS a tap SETS :hover and it
+   stays stuck until the next tap elsewhere, so an un-gated hover reads as a
+   button that never un-pressed. Gate: (hover: hover) and (pointer: fine).
+   This applies to every :hover in the split stylesheet except the follow-up
+   sheets listed in phone-touch-surface.test.mjs; :active is the touch press
+   feedback. Keyboard keeps the :focus-visible ring below — do not fold a
+   generic button:focus-visible fill here, it would outrank .bigbtn paint. */
+@media (hover: hover) and (pointer: fine) {
+  button:hover { background: var(--plate-hover); }
+  button:disabled:hover { background: var(--plate); }
+}
+button:active { background: var(--plate-press); }
+/* Mode-dependent menu toggles (RECALIBRATE TILT, GEARS) disable instead of
+   hiding: removing them reflowed the settings grid under the player's finger,
+   so the next tap hit the wrong button. Dim, keep the slot. */
+/* 0.55, raised from 0.35: at 0.35 a disabled door's label fell below
+   readable contrast on the translucent plates, so the slot kept its place
+   but lost its name. Still clearly a step below --dim resting text. */
+button:disabled { opacity: 0.55; cursor: default; }
+button:disabled:active { background: var(--plate); }
+
+/* ---- KEYBOARD FOCUS RING (WCAG 2.4.7 Focus Visible) --------------------
+   Two decisions here, both learned the hard way.
+
+   INSET, not outset. Every focusable control in this UI sits inside at least
+   one clipping box — a .pane scroll region, #sel-tracks, #cs-options, .sheet,
+   .dh-card, and finally body/html, all of which are overflow:hidden. A ring
+   drawn 2px OUTSIDE the border box lands outside that clip and gets sliced:
+   an audit of every control on every menu screen found the left side of the
+   track rows' ring, the top of the team tiles', and the bottom edge of the
+   last row in half a dozen panes all cut off. Chasing that with a per-
+   container override is endless — a negative offset draws the ring just
+   inside the box instead, where nothing can ever clip it, in any layout.
+
+   BASE LAYER, not overlays. This rule used to live in css/responsive.css,
+   which is @layer overlays — a HIGHER layer than @layer components, so it
+   beat every per-component focus override in the codebase on layer order
+   alone, regardless of specificity. `.track-row:focus-visible` losing to
+   `button:focus-visible` is not a cascade you can debug by reading
+   specificity. The generic default belongs in base, where a component can
+   still override it. */
+:focus-visible {
+  /* A FLOOR, like --tap-min: most focusables sit inside the .sheet zoom, and
+     a raw 2px paints 0.8 device px at UI SIZE 40% (WCAG 2.4.11 wants the
+     indicator area of a 2 CSS px perimeter). max() only grows, so at ≥100%
+     it is exactly the old 2px; the offset tracks the width to stay inset. */
+  outline: max(2px, calc(2px / var(--ui-scale, 1))) solid var(--focus);
+  outline-offset: calc(-1 * max(2px, calc(2px / var(--ui-scale, 1))));
+}
+/* SETTINGS › ACCESSIBILITY › KEYBOARD FOCUS: HIGH — thicker inset ring so
+   Tab / arrows stay obvious on every menu and settings control. */
+:root[data-focus="high"] :focus-visible {
+  outline-width: max(3px, calc(3px / var(--ui-scale, 1)));
+  outline-offset: calc(-1 * max(3px, calc(3px / var(--ui-scale, 1))));
+  box-shadow: inset 0 0 0 max(1px, calc(1px / var(--ui-scale, 1))) color-mix(in srgb, var(--focus) 55%, transparent);
+}
+/* THE density switch. A landscape phone is ~390-430px tall and that is the
+   whole constraint: the same menus, tighter. Nothing here changes layout —
+   only how much room each part takes.
+
+   FOUR OF THESE WERE DEAD, AND HAD BEEN SINCE THE TOUCH LADDER LANDED.
+   This block declared --tap/--chip-h/--tap-sm/--label on :root while the touch
+   ladder declares --ui-scale (and previously those same four) on body. A
+   declaration on the element ITSELF always beats one inherited from an
+   ancestor, so on every touch device in landscape — which is this game's
+   primary orientation, i.e. exactly the case the block was written for — the
+   body value won and these four never applied. Only --pad/--gap/--gut ever
+   landed. Nothing said so, and the numbers read like a working ladder.
+
+   They are gone rather than moved to body. Shrinking the tap ladder on the one
+   device that aims with a thumb is what the whole "everything is too small"
+   thread was about; the size question now has one answer, --ui-scale, and a
+   setting behind it. What stays is the SPACING, which is the real constraint on
+   a 393px-tall screen and is orthogonal to how big a control is. */
+@media (orientation: landscape) and (max-height: 560px) {
+  :root {
+    --pad: 13px;
+    --gap: 8px;
+    --gut: 8px;
+  }
+}
+/* THE SAME TIGHTENING, DECIDED IN THE SHEET'S OWN UNITS.
+   The query above reads the VIEWPORT, and every `.sheet` carries
+   `zoom: var(--ui-scale)` — so the two are measuring in different spaces and
+   disagree exactly when it matters. At UI SIZE 150% on a 1000x600 screen the
+   query reads 600, declines to tighten, and hands roomy 22px padding to a sheet
+   whose own height is 400px. That is the same coordinate-space fault that put
+   the lighting tuner's action bar off the bottom of a phone
+   (docs/archive/research/ZOOM-ORIENTATION-STRUCTURE-2026-08.md has the full inventory).
+
+   `data-density` is the answer that can see both: js/game/sheetshape.js divides
+   the measured height by the element's own zoom, against a per-sheet
+   `--compact-at`. A sheet that is short in the units its CSS is written in gets
+   the tighter spacing whatever the viewport says. "Short" is the ROOM the sheet
+   has (its host's content box, floored by its own height), not its content —
+   a content-sized sheet's compact layout is shorter than its normal one, and
+   measuring the content kept RACE SETTINGS compact on an 800px desktop.
+
+   THE VIEWPORT QUERY STAYS, and is not redundant. It also serves `#overlay`,
+   which is one of the two screens outside `.sheet` and therefore carries no
+   `data-density` — deleting it would leave the title screen roomy on a landscape
+   phone. The two overlap harmlessly: where both apply they set the same three
+   numbers. Bringing #overlay under the attribute is the next step in that doc's
+   migration order, not this one. */
+.sheet[data-density="compact"] {
+  --pad: 13px;
+  --gap: 8px;
+  --gut: 8px;
+}
+} /* @layer base */

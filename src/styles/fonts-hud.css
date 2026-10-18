@@ -1,0 +1,59 @@
+/* Ported verbatim from f1-game css/fonts-hud.css (font urls re-pointed at ./fonts/). */
+@layer hud {
+/* HUD / body faces, off the title-critical sheet (print→all via CSS_DEFERRED).
+   Barlow Condensed is the numeric HUD/timing face; Titillium 400 and 700-normal
+   are body weights the title composition does not preload. font-display: swap.
+   @font-face is layer-insensitive; the wrapper satisfies the layered-sheet
+   roster in tests/unit/css-layers.test.mjs. Immutable vendored assets → NO ?v=. */
+
+@font-face {
+  font-family: "Titillium Web"; font-style: normal; font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/titillium-web-latin-400-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Titillium Web"; font-style: normal; font-weight: 700;
+  font-display: swap;
+  src: url("./fonts/titillium-web-latin-700-normal.woff2") format("woff2");
+}
+/* BARLOW CONDENSED, AND THE size-adjust IS MEASURED, NOT TASTEFUL.
+   Rajdhani stood here and its ~36 `font-variant-numeric: tabular-nums`
+   declarations were INERT: its Latin subset carries no OpenType features at all
+   (the full TTF has 13, every one under script `deva`, and Google's subsetter
+   drops them for Latin), and its digits are proportional. Measured in Chromium,
+   three-digit strings at #hud-speed's 34px, spread between the widest and the
+   narrowest:
+
+     Rajdhani            21.22 px   ->  21.22 px with tabular-nums (no change)
+     Barlow Condensed    20.94 px   ->      0 px with tabular-nums
+
+   So the speed readout slid as digits changed and no CSS could stop it. Barlow
+   Condensed resolves `tnum` to uniform advances, which makes the declarations
+   already in the stylesheets correct rather than decorative.
+
+   size-adjust: 91.9% matches CAP HEIGHT, not em: Barlow's cap is 0.700em against
+   Rajdhani's 0.643em, so at a shared font-size it would render 8.9% taller and
+   every HUD box sized against the old face would be wrong. 0.643/0.700 = 91.86%,
+   and the browser agrees — "H" at 700/34px measures 21px in both. Cap height is
+   the right normaliser here because the HUD is uppercase and digits; matching em
+   or x-height would not hold the boxes. It also leaves the populated `.hud-top`
+   string 18% NARROWER than Rajdhani (206.2 -> 169.2 px at 14px), which is slack
+   in exactly the place docs/notes/HUD-TABULAR-DIGITS.md says the fit pass fights
+   for it. The three weights mirror Rajdhani's; 800 still synth-bolds from 700. */
+@font-face {
+  font-family: "Barlow Condensed"; font-style: normal; font-weight: 500;
+  font-display: swap; size-adjust: 91.9%;
+  src: url("./fonts/barlow-condensed-latin-500-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Barlow Condensed"; font-style: normal; font-weight: 600;
+  font-display: swap; size-adjust: 91.9%;
+  src: url("./fonts/barlow-condensed-latin-600-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Barlow Condensed"; font-style: normal; font-weight: 700;
+  font-display: swap; size-adjust: 91.9%;
+  src: url("./fonts/barlow-condensed-latin-700-normal.woff2") format("woff2");
+}
+
+} /* @layer hud */

@@ -1,3 +1,4 @@
+import "./styles";
 import { App } from "./app/app";
 import { createScreens } from "./app/screens";
 import { createDebugApi } from "./debug/api";

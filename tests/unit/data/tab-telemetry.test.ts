@@ -7,6 +7,7 @@
  * Baku 2026 race lap 28 (session 11377, driver 1). No live network.
  */
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import * as CssZoom from "../../../src/styles/css-zoom";
 import { createF1Api, type CarSample, type F1Api, type Lap, type LocationSample, type PitStop, type Session, type SessionDriver, type Stint } from "../../../src/data/api";
 import { setDataLog } from "../../../src/data/log";
 import * as Controller from "../../../src/data/tabs/telemetry/controller";
@@ -450,7 +451,12 @@ function installBrowserStubs(opts: { dpr: number; zoom: number }): Harness {
   });
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation((() => drawing) as unknown as HTMLCanvasElement["getContext"]);
   Object.defineProperty(HTMLCanvasElement.prototype, "currentCSSZoom", { configurable: true, get: () => opts.zoom });
-  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ left: 0, top: 0, right: 330, bottom: 100, width: 330, height: 100, x: 0, y: 0, toJSON: () => ({}) } as DOMRect);
+  // Rects are VISUAL (Chromium): CssZoom's probe — a 100px box at zoom 2 appended to <html> — reads 200 wide.
+  CssZoom._resetProbe();
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    if (this.parentNode === document.documentElement) return { left: 0, top: 0, right: 200, bottom: 100, width: 200, height: 100, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+    return { left: 0, top: 0, right: 330, bottom: 100, width: 330, height: 100, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+  });
   return h;
 }
 afterEach(() => {
