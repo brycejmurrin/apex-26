@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ChaseCam } from "../../src/camera/chase";
+import { ChaseCam, chaseLens } from "../../src/camera/chase";
 import { FlatLoop } from "../../src/app/flat-loop";
 import type { TrackSample } from "../../src/contracts/track";
 
@@ -54,5 +54,17 @@ describe("ChaseCam", () => {
     const slow = at(0), fast = at(72);
     expect(fast.fov).toBeGreaterThan(slow.fov);
     expect(fast.back).toBeGreaterThan(slow.back);
+  });
+});
+
+describe("chaseLens (drive-chase.js apply)", () => {
+  it("matches f1-game's per-mode FOV deltas and returns null outside the chase family", () => {
+    const ctx = { sp: 0.5, yaw: -0.5, brake: 1, slip: 0.25 };
+    expect(chaseLens("chase", ctx)).toBe(4 * 0.5 + 2 * 0.5 + 2 * 1);
+    expect(chaseLens("far", ctx)).toBe(7 * 0.5 + 0.4 * 0.5);
+    expect(chaseLens("drift", ctx)).toBe(3 * 0.5 + 6 * 0.5 + 4 * 0.25);
+    expect(chaseLens("low", ctx)).toBe(5 * 0.5);
+    expect(chaseLens("reverse", ctx)).toBe(1.5 * 0.5);
+    expect(chaseLens("cockpit", ctx)).toBeNull();
   });
 });
