@@ -1,0 +1,1 @@
+tests/goldens/*.json linguist-generated=true -diff
