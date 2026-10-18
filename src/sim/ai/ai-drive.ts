@@ -4,10 +4,9 @@
  * defending, side-by-side yield rules, mistakes, launch and pace phase.
  *
  * Port of f1-game js/physics/ai-drive.js (`AiDrive`, :2-1748), verbatim in
- * float operation order, for every function the race step calls with TYRE
- * WEAR off. The wear-on strategy planner (stintPlan, splitStints, degCost,
- * compoundFor, pitNow, wornPays, strategyTemper, tasteRoll; :1150-1380) is
- * TODO(lane-physics): it runs only with wear on, behind the pit lane.
+ * float operation order: every function the race step calls, plus the
+ * wear-on strategy planner (stintPlan, splitStints, degCost, compoundFor,
+ * pitNow, wornPays, strategyTemper, tasteRoll; :1031-1380) the pit lane calls.
  * The contact / wall helpers live in src/physics/ai-contact.ts (re-exported).
  *
  * AI-only. Curvature reaches the AI's choices here (corner speed, pass side),
@@ -870,6 +869,248 @@ export function tyrePace(cls: string, lapsDone: number): number {
   const t = TYRE[cls] || (TYRE["medium"] as { off: number; deg: number });
   return 1 + t.off - Math.min(t.deg * Math.max(lapsDone || 0, 0), 0.025);
 }
+
+// ── strategy, TYRE WEAR on (ai-drive.js:1031-1380) ──────────────────────────
+// Costs are in lap-time fractions so they add (ai-drive.js:1044-1049).
+const FUEL_WEAR = 0.22;
+const PIT_LOSS_FALLBACK = 0.18;
+const DEG_LIN = 0.05;
+const DEG_CLIFF = 0.5;
+const GRIP_TO_LAP = 0.55;
+const TASTE_BIAS = 0.8;
+const TASTE_SOFTEN = 0.01;
+const MIN_STINT = 2;
+const ONE_SET_LAPS = 5;
+/** ai-drive.js:1076. The drop summed over an `n`-lap stint on a set with `life` laps. */
+export function degCost(n: number, life: number): number {
+  const L = Math.max(0.5, life);
+  const over = Math.max(0, n - L);
+  const inLife = Math.min(n, L);
+  const mean = DEG_LIN * (inLife / (2 * L)) * inLife + DEG_LIN * over + DEG_CLIFF * (over * over) / (2 * L);
+  return mean * GRIP_TO_LAP;
+}
+
+/** ai-drive.js:1106. Split `laps` into stints in proportion to the lives, fuel-aware when `fuelWear` > 0. */
+export function splitStints(laps: number, lives: readonly number[], fuelWear?: number): number[] {
+  const share = (v: readonly number[]): number[] => {
+    const total = v.reduce((a, x) => a + x, 0) || 1;
+    const out = v.map((x) => Math.max(1, Math.round(laps * x / total)));
+    let drift = out.reduce((a, x) => a + x, 0) - laps;
+    for (let i = out.length - 1; i >= 0 && drift > 0; i--) {
+      const take = Math.min(drift, (out[i] as number) - 1);
+      (out[i] as number) -= take;
+      drift -= take;
+    }
+    if (drift < 0) (out[out.length - 1] as number) -= drift;
+    return out;
+  };
+  let out = share(lives);
+  if ((fuelWear as number) > 0 && lives.length > 1) {
+    for (let pass = 0; pass < 3; pass++) {
+      let done = 0;
+      const eff = lives.map((v, i) => {
+        const fuel = 1 - (done + (out[i] as number) / 2) / laps;
+        done += out[i] as number;
+        return Math.max(0.5, v / (1 + (fuelWear as number) * fuel));
+      });
+      out = share(eff);
+    }
+  }
+  return out;
+}
+
+export type TyreClass = "soft" | "medium" | "hard";
+const MAX_STOPS = 2;
+const CLASSES: readonly TyreClass[] = ["soft", "medium", "hard"];
+
+export interface StintPlanCtx {
+  laps?: number | undefined;
+  /** Laps a fresh set of `cls` lasts. Default: 0.7 of the race for a known class. */
+  lifeLaps?: ((cls: string) => number) | undefined;
+  pitLossLaps?: number | null | undefined;
+  roll?: number | undefined;
+  /** Pinned stop count (the player's STRATEGY row). */
+  stops?: number | null | undefined;
+  /** Compound already on the car (a mid-race re-cut). */
+  start?: string | null | undefined;
+  /** Laps left on the set already on the car. */
+  firstLife?: number | undefined;
+  /** FIA B6.3.6: a dry race uses at least two compounds. */
+  twoCompound?: boolean | undefined;
+  /** Compounds already run (a mid-race re-cut). */
+  used?: readonly string[] | undefined;
+}
+export interface StintPlan {
+  start: TyreClass;
+  seq: TyreClass[];
+  stints: number[];
+  stops: number;
+  lapsAt: number[];
+  cost: number;
+}
+interface Best {
+  cost: number;
+  seq: TyreClass[];
+  stints: number[];
+  stops: number;
+  lives: number[];
+}
+
+/** ai-drive.js:1145. Enumerate the 0-, 1- and 2-stop plans and keep the cheapest, staggered by the roll. */
+export function stintPlan(ctx: StintPlanCtx): StintPlan {
+  const laps = Math.max(1, Math.round(ctx.laps || 1));
+  const lifeLaps = ctx.lifeLaps || ((cls: string) => (TYRE[cls] ? laps * 0.7 : laps));
+  const pitLossLaps = ctx.pitLossLaps != null ? ctx.pitLossLaps : PIT_LOSS_FALLBACK;
+  const roll = clamp(ctx.roll || 0, 0, 1);
+  const bias = (roll - 0.5) * TASTE_BIAS * pitLossLaps;
+  const soften = (roll - 0.5) * TASTE_SOFTEN;
+  const taste: Record<string, number> = { soft: soften, medium: 0, hard: -soften };
+  let pinStops = ctx.stops != null && ctx.stops >= 0 ? Math.min(MAX_STOPS, ctx.stops | 0, Math.max(0, laps - 1)) : null;
+  let pinStart = ctx.start && TYRE[ctx.start] ? ctx.start : null;
+  let twoCompound = !!ctx.twoCompound;
+  const used = ctx.used || [];
+  const firstLife = ctx.firstLife as number;
+  let best: Best | null = null;
+  const walk = (seq: TyreClass[]): void => {
+    const stops = seq.length - 1;
+    if (pinStops != null && stops !== pinStops) return;
+    if (twoCompound && new Set((used as readonly string[]).concat(seq)).size < 2) return;
+    if (pinStart && seq[0] !== pinStart) return;
+    if (stops > 0 && laps <= ONE_SET_LAPS && pinStops == null && !pinStart && !(firstLife > 0)) return;
+    const lives = seq.map((cls, i) => (i === 0 && firstLife > 0 ? firstLife : lifeLaps(cls)));
+    const stints = splitStints(laps, lives, FUEL_WEAR);
+    let cost = stops * pitLossLaps + stops * bias;
+    let done = 0;
+    for (let i = 0; i < seq.length; i++) {
+      const t = TYRE[seq[i] as string] || (TYRE["medium"] as { off: number; deg: number });
+      const fuel = 1 - (done + (stints[i] as number) / 2) / laps;
+      cost += -(t.off + (taste[seq[i] as string] || 0)) * (stints[i] as number) + degCost(stints[i] as number, (lives[i] as number) / (1 + FUEL_WEAR * fuel));
+      done += stints[i] as number;
+    }
+    if (!best || cost < best.cost) best = { cost, seq: seq.slice(), stints: stints.slice(), stops, lives: lives.slice() };
+  };
+  const rec = (seq: TyreClass[]): void => {
+    walk(seq);
+    if (seq.length > MAX_STOPS) return;
+    for (const cls of CLASSES) rec(seq.concat(cls));
+  };
+  for (const cls of CLASSES) rec([cls]);
+  if (!best && pinStart) {
+    pinStart = null;
+    for (const cls of CLASSES) rec([cls]);
+  }
+  if (!best && twoCompound && pinStops === 0 && laps > 1) {
+    pinStops = 1;
+    for (const cls of CLASSES) rec([cls]);
+  }
+  if (!best && twoCompound) {
+    twoCompound = false;
+    for (const cls of CLASSES) rec([cls]);
+  }
+  const b = best as unknown as Best;
+  const shift = clamp(Math.round((roll - 0.5) * 3), -1, 1);
+  const lapsAt: number[] = [];
+  const stints = b.stints.slice();
+  let acc = 0,
+    prev = 0;
+  const effLife = (i: number, from: number, len: number): number => (b.lives[i] as number) / (1 + FUEL_WEAR * (1 - (from + len / 2) / laps));
+  const minStint = Math.max(1, Math.min(MIN_STINT, Math.floor(laps / Math.max(1, stints.length))));
+  for (let i = 0; i < stints.length - 1; i++) {
+    acc += b.stints[i] as number;
+    const to = acc + shift,
+      last = i + 1 === stints.length - 1;
+    const nextEnd = last ? laps : acc + (b.stints[i + 1] as number);
+    const over = (shift > 0 && to - prev > effLife(i, prev, to - prev)) || (shift < 0 && nextEnd - to > effLife(i + 1, to, nextEnd - to));
+    const at = clamp(over ? acc : to, prev + minStint, laps - minStint * (stints.length - 1 - i));
+    lapsAt.push(at);
+    stints[i] = at - prev;
+    prev = at;
+  }
+  if (stints.length) stints[stints.length - 1] = laps - prev;
+  return { start: b.seq[0] as TyreClass, seq: b.seq, stints, stops: b.stops, lapsAt, cost: b.cost };
+}
+
+/** ai-drive.js:1265. The softest compound that covers `lapsLeft`, else the hardest. */
+export function compoundFor(lapsLeft: number, lifeLaps: (cls: TyreClass) => number): TyreClass {
+  const need = Math.max(1, lapsLeft);
+  for (const cls of CLASSES) if (lifeLaps(cls) >= need) return cls;
+  return CLASSES[CLASSES.length - 1] as TyreClass;
+}
+
+const CAUTION_REACH = 6;
+const UNDERCUT_REACH = 2;
+const UNDERCUT_LAPS = 1;
+const UNDERCUT_MIN_WEAR = 0.4;
+const STUCK_GAP_S = 1.0;
+const COVER_GAP_S = 2.0;
+const STUCK_LAPS = 1;
+const REPLAN_GAP = 4;
+const TEMPER = { REACT_MIN: 0.75, ATTACK_MIN: 0.85, GAMBLE_W: 0.8 } as const;
+export interface StrategyTemper {
+  react: number;
+  attack: number;
+  gamble: number;
+}
+/** ai-drive.js:1316. */
+export function strategyTemper(c: RatedCar): StrategyTemper {
+  const t = traits(c);
+  return { react: 0.6 * t.experience + 0.4 * t.awareness, attack: t.craft, gamble: 1 - t.experience };
+}
+/** ai-drive.js:1323. The plan roll widened by the gamble; 0.5 stays 0.5. */
+export function tasteRoll(roll: number, c: RatedCar): number {
+  return clamp(0.5 + (roll - 0.5) * (1 + TEMPER.GAMBLE_W * strategyTemper(c).gamble), 0, 1);
+}
+
+export interface WornCtx {
+  lapsLeft?: number | null | undefined;
+  wear?: number | undefined;
+  pitLossLaps?: number | undefined;
+}
+/** ai-drive.js:1340. Do the laps left pay back a stop for a worn set? */
+export function wornPays(ctx: WornCtx): boolean {
+  if (ctx.lapsLeft == null) return true;
+  const over = Math.max(0.1, (ctx.wear || 0) - 1);
+  const gainPerLap = (DEG_LIN + DEG_CLIFF * over) * GRIP_TO_LAP;
+  const payback = ((ctx.pitLossLaps as number) > 0 ? (ctx.pitLossLaps as number) : PIT_LOSS_FALLBACK) / Math.max(1e-3, gainPerLap);
+  return ctx.lapsLeft >= payback;
+}
+
+export interface PitNowCtx extends WornCtx {
+  wrongTread?: boolean | undefined;
+  scripted?: boolean | undefined;
+  stopsLeft: number;
+  lapsToStop: number;
+  wear: number;
+  cautionLevel?: number | undefined;
+  fits?: boolean | undefined;
+  rivalUsed?: boolean | undefined;
+  rivalBehindBoxed?: boolean | undefined;
+  stuckBehind?: boolean | undefined;
+  react?: number | undefined;
+  attack?: number | undefined;
+}
+export type PitReason = "" | "weather" | "plan" | "worn" | "caution" | "cover" | "undercut";
+/** ai-drive.js:1347. Why this car stops now ("" = it does not). */
+export function pitNow(ctx: PitNowCtx | null | undefined): PitReason {
+  if (!ctx) return "";
+  if (ctx.wrongTread) return "weather";
+  if (ctx.scripted) return ctx.stopsLeft > 0 && ctx.lapsToStop <= 0 ? "plan" : "";
+  if (ctx.wear >= 1 && wornPays(ctx)) return "worn";
+  if (ctx.stopsLeft <= 0) return "";
+  if ((ctx.cautionLevel as number) >= 2 && (ctx.cautionLevel as number) < 4 && ctx.fits !== false && ctx.lapsToStop <= CAUTION_REACH) return "caution";
+  if (!ctx.rivalUsed && ctx.fits !== false && ctx.lapsToStop <= UNDERCUT_REACH && (ctx.wear || 0) >= UNDERCUT_MIN_WEAR) {
+    if (ctx.rivalBehindBoxed && (ctx.react || 0) >= TEMPER.REACT_MIN) return "cover";
+    if (ctx.stuckBehind && ctx.lapsToStop <= UNDERCUT_LAPS && (ctx.attack || 0) >= TEMPER.ATTACK_MIN) return "undercut";
+  }
+  if (ctx.lapsToStop <= 0) return "plan";
+  return "";
+}
+
+/** ai-drive.js:1749 `STRAT`. */
+export const STRAT = {
+  MAX_STOPS, CLASSES, CAUTION_REACH, UNDERCUT_REACH, UNDERCUT_LAPS, UNDERCUT_MIN_WEAR, STUCK_GAP_S, STUCK_LAPS, COVER_GAP_S, REPLAN_GAP, TEMPER,
+  DEG_LIN, DEG_CLIFF, GRIP_TO_LAP, FUEL_WEAR, PIT_LOSS_FALLBACK, TASTE_BIAS, TASTE_SOFTEN, MIN_STINT, ONE_SET_LAPS,
+} as const;
 
 // ── side-by-side with a human (ai-drive.js:1420-1462) ───────────────────────
 export function humanYieldGrace(): number {

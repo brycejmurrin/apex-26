@@ -13,7 +13,7 @@ interface FnCase {
   args: unknown[];
   out: unknown;
 }
-const golden = readGolden<{ meta: { f1Sha: string }; fns: FnCase[] }>("ai-modules.json.gz");
+const golden = readGolden<{ meta: { f1Sha: string }; fns: FnCase[]; strat: unknown }>("ai-modules.json.gz");
 
 type F = (...a: never[]) => unknown;
 const call = (f: F, args: unknown[]): unknown => (f as unknown as (...a: unknown[]) => unknown)(...args);
@@ -89,6 +89,17 @@ const FNS: Record<string, (args: unknown[]) => unknown> = {
   lineFollow: (a) => call(A.lineFollow, a),
   bandFactor: (a) => call(AiBand.factor, a),
   bandApply: (a) => call(AiBand.applyVmax, a),
+  stintPlan: ([sp]) => {
+    const { life, ...rest } = sp as A.StintPlanCtx & { life?: Record<string, number> };
+    return { ...A.stintPlan(life ? { ...rest, lifeLaps: (cls) => life[cls] as number } : rest) };
+  },
+  splitStints: (a) => call(A.splitStints, [a[0], a[1], und(a[2])]),
+  degCost: (a) => call(A.degCost, a),
+  compoundFor: ([left, t]) => A.compoundFor(left as number, (cls) => (t as Record<string, number>)[cls] as number),
+  strategyTemper: ([c]) => ({ ...A.strategyTemper(c as A.RatedCar) }),
+  tasteRoll: (a) => call(A.tasteRoll, a),
+  wornPays: (a) => call(A.wornPays, a),
+  pitNow: (a) => call(A.pitNow, a),
   corridor: ([ctx, cars, clear]) => {
     const cs = cars as AiCorridor.CorridorCar[];
     return AiCorridor.choose(ctx as AiCorridor.CorridorCtx, cs[0] as AiCorridor.CorridorCar, cs[1] as AiCorridor.CorridorCar, cs, 5793, clear as number);
@@ -109,4 +120,7 @@ describe(`AI modules vs f1-game ${golden.meta.f1Sha.slice(0, 9)}`, () => {
       });
     });
   }
+  it("STRAT constants match", () => {
+    expect(firstDiff(structuredClone(A.STRAT), golden.strat)).toBeNull();
+  });
 });
