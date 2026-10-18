@@ -518,3 +518,54 @@ write("caution-machine", [machineRun(5, false), machineRun(6, true), machineRun(
   }
   write("sporting-regs", { comp, pass, jumps, pens: [0, 1, 2, 3, 4].map(S.passPenaltyS) });
 }
+
+// ─── pit lane (window, loss, rules) ────────────────────────────────────────
+{
+  let curv = () => 0;
+  const teams = ["merc", "ferrari", "mclaren", "rb", "aston", "alpine", "haas", "williams", "audi", "cadillac", "racingbulls"];
+  let tread = 0;
+  const ctx = context({
+    M4: { clamp: (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v) },
+    Tracks: { curvature: (t, s) => curv(s) },
+    Teams: { LIST: teams.map((id) => ({ id })) },
+    TyreModel: { treadFor: () => tread },
+  });
+  load(ctx, "js/race/sporting-regs.js");
+  load(ctx, "js/race/pit-lane.js");
+  const P = read(ctx, "PitLane"), r = rng(15);
+  const cases = [];
+  for (let k = 0; k < 60; k++) {
+    const total = 3300 + Math.floor(r() * 3700);
+    const kp = { a: 0.002 + r() * 0.01, f: 3 + Math.floor(r() * 9), ph: r() * 6 };
+    curv = (s) => kp.a * Math.sin(2 * Math.PI * kp.f * s / total + kp.ph);
+    const def = { street: r() < 0.3 };
+    if (r() < 0.3) def.pitZone = { entryM: pick(r, [undefined, 300, 180]), exitM: pick(r, [undefined, 90]), boxM: pick(r, [undefined, 60]), limitFrac: pick(r, [undefined, 0.25]), boxS: pick(r, [undefined, 3]), side: pick(r, [undefined, -1, 1]) };
+    const track = { total, def };
+    if (r() < 0.3) track.pit = { sIn: total - 300, sOut: 100, lenM: 400, limitKph: 80, side: -1, painted: r() < 0.5, entryRoadM: 60, exitRoadM: 50 };
+    const env = { vTop: 72 * pick(r, [1, 0.6, 1.3]), aTop: pick(r, [undefined, 9, 12]), brake: pick(r, [undefined, 35, 40]) };
+    const flag = pick(r, [0, 1, 2, 3, 4]);
+    tread = pick(r, [0, 0, 1, 2]);
+    const lapsTarget = pick(r, [3, 8, 12, 57]);
+    const cars = [];
+    for (let i = 0; i < 6; i++) cars.push({ prog: round3(r() * 9000), speed: round3(r() * 80), retired: r() < 0.1, finished: r() < 0.05, lap: Math.floor(r() * 14), wear: round3(r()), team: r() < 0.8 ? { id: pick(r, teams) } : null, tyre: r() < 0.8 ? { tread: pick(r, [0, 0, 1, 2]) } : null, tyreLog: [{ code: pick(r, ["S", "M", "H"]) }].concat(r() < 0.5 ? [{ code: pick(r, ["S", "M", "H", "I"]) }] : []) });
+    const G = {
+      track, vTop: () => env.vTop, aTop: env.aTop ? () => env.aTop : undefined, BRAKE: env.brake, cars, lapsTarget,
+      tyres: { on: () => true, spent: (c) => c.wear }, cautionLevel: () => flag, cautionInfo: () => ({ level: flag }),
+      raceWeather: "dry", trackWetness: () => 0, seasonMode: false,
+    };
+    const pl = P.create(G);
+    const zone = P.zoneOf(track);
+    const probes = [];
+    for (let i = 0; i < 20; i++) { const s = r() * total * 1.5 - total * 0.2; probes.push([s, P.inWindow(zone, s, total), P.throughM(zone, s, total)]); }
+    cases.push({
+      total, kp, def, pit: track.pit || null, env, flag, tread, lapsTarget, cars, zone, entryRun: P.entryRunM(track), probes,
+      limit: pl.limit(), lossS: pl.lossS(),
+      est: cars.map((c) => pl.estimate(c)),
+      worth: cars.map((c) => pl.worthStopping(c)),
+      box: track.pit ? null : cars.map((c) => pl.boxThroughFor(c)),
+      applies: pl.twoCompoundApplies(), due: cars.map((c) => pl.compoundDue(c)),
+      laneW: [0, 3, 5, 7, 9].map(P.laneWidth),
+    });
+  }
+  write("pit-lane", { cases, teams });
+}
