@@ -1,9 +1,10 @@
 /** Recorded-fixture fetch for the data lane: no live network in tests. */
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 import type { CacheStorage, FetchFn, FetchResponse } from "../../../src/data/transport";
 
-const DIR = fileURLToPath(new URL("../../fixtures/data/", import.meta.url));
+// cwd, not import.meta.url: under happy-dom the module URL is not a file: URL.
+const DIR = resolve(process.cwd(), "tests/fixtures/data") + "/";
 
 export function fixture(name: string): unknown {
   return JSON.parse(readFileSync(DIR + name, "utf8"));

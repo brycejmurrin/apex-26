@@ -12,7 +12,7 @@ label.textContent = `${backend} (${reason})`;
 label.dataset.backend = backend;
 label.dataset.reason = reason;
 
-const app = new App({ renderer, canvas });
+const app = new App({ renderer, canvas, hudParent: document.body });
 app.input.attach(window);
 app.resize(window.innerWidth, window.innerHeight);
 

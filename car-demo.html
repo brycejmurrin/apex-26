@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Apex 26 car demo</title>
+    <!-- Dev-only route (lane car): `npm run dev`, then /apex-26/car-demo.html.
+         vite build bundles index.html only, so this page never ships. -->
+    <style>
+      html, body { margin: 0; height: 100%; background: #0b0d12; color: #e8eaf0; font: 14px/1.4 system-ui, sans-serif; overflow: hidden; }
+      #game { display: block; width: 100vw; height: 100vh; }
+      #info { position: fixed; top: 8px; left: 8px; padding: 2px 8px; border-radius: 4px; background: rgb(0 0 0 / 0.5); white-space: pre; }
+    </style>
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+    <div id="info">booting…</div>
+    <script type="module" src="/src/car/demo.ts"></script>
+  </body>
+</html>
