@@ -8,8 +8,8 @@
  */
 import type { Duration, SessionDriver, SessionResultRow, Session } from "../api";
 import { fmtLap as domFmtLap, fmtRaceClock } from "../dom";
-import type { HubDeps, MountedTab, TabNode } from "../hub-deps";
-import { log } from "../log";
+import type { HubDeps, MountedTab } from "../hub-deps";
+import { mountTab } from "./mount";
 
 type Meta = Pick<Session, "name" | "type"> | null | undefined;
 
@@ -95,9 +95,8 @@ export const FETCH_FAIL_MSG = "Couldn't load this session's classification. " +
   "Pick it again in a moment — the free F1 API rate-limits hard.";
 
 /**
- * What renderBody records on the tab node for the hub (results.js:255-260).
- * Wider than hub-deps.ts's TabOutcome, which lacks "loading" and the
- * freshness fields; see onOutcome below.
+ * What renderBody records on the tab node for the hub (results.js:255-260):
+ * every TabOutcome field, always set.
  */
 export interface ResultsOutcome {
   status: "loading" | "ready" | "empty" | "failed";
@@ -149,9 +148,7 @@ export function create({ api, el, clear, emptyMsg, spinner, sel, ensureSession, 
       const dataAt = (status === "ready" || status === "empty") ? api.staleSince(mark) : null;
       wrap.tabOutcome = { status, error: error || null, at: Date.now(), dataAt, offlineCopy: dataAt != null,
         hasData: status === "ready" };
-      // TODO(lane-data hub-deps): TabOutcome lacks "loading" and the freshness
-      // fields hub.js merges (hub.js:764); drop this cast once it is widened.
-      if (onOutcome) onOutcome(wrap as unknown as TabNode);
+      if (onOutcome) onOutcome(wrap);
     }
     round = "all";           // a new session starts on its own overall order
     clear(body);
@@ -426,52 +423,4 @@ export function create({ api, el, clear, emptyMsg, spinner, sel, ensureSession, 
 export function mount(host: HTMLElement, deps: ResultsDeps): MountedTab {
   const tab = create(deps);
   return mountTab("results", host, deps, () => tab.loadResults(), () => {});
-}
-
-// MOUNT SEAM (apex-26): hub.js's loadTab (hub.js:404-445) owns spinner, swap
-// and error block; a standalone mount needs the same three steps. A refresh or
-// unmount bumps `gen` so a load still in flight never paints over a newer one.
-function mountTab(name: string, host: HTMLElement, deps: Pick<HubDeps, "el" | "clear" | "spinner">,
-                  load: () => Promise<HTMLElement>, onUnmount: () => void): MountedTab {
-  let gen = 0;
-  function refresh(): Promise<void> {
-    const myGen = ++gen;
-    deps.clear(host);
-    host.appendChild(deps.spinner());
-    return load().then((node) => {
-      if (myGen !== gen) return;
-      deps.clear(host);
-      host.appendChild(node);
-    }, (err: unknown) => {
-      if (myGen !== gen) return;
-      log.warn("tab " + name + " fail", err);
-      deps.clear(host);
-      host.appendChild(errorNode(deps.el, () => { void refresh(); }));
-    });
-  }
-  void refresh();
-  return {
-    refresh,
-    unmount() {
-      gen++;
-      onUnmount();
-      deps.clear(host);
-    },
-  };
-}
-
-// The UPSTREAM case of hub.js's errorBlock (hub.js:462-503), same classes.
-function errorNode(el: HubDeps["el"], retryFn: () => void): HTMLElement {
-  const w = el("div", "dh-error");
-  w.setAttribute("role", "status");
-  w.dataset.reason = "upstream";
-  const titleEl = el("div", "dh-error-msg", "SERVICE UNAVAILABLE");
-  titleEl.dataset.role = "title";
-  w.appendChild(titleEl);
-  w.appendChild(el("div", "dh-error-msg", "Couldn't reach the F1 data service. It may be busy or blocked — try again in a moment."));
-  const retry = el("button", "dh-retry", "RETRY");
-  retry.type = "button";
-  retry.addEventListener("click", retryFn);
-  w.appendChild(retry);
-  return w;
 }

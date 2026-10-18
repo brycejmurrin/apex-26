@@ -17,8 +17,16 @@ export interface HubSelection {
   pinned: boolean;
 }
 
-/** What a tab load may record on its node for the hub's tab state (hub.js:418, `node.tabOutcome`). */
-export interface TabOutcome { status?: "ready" | "empty" | "failed"; error?: unknown }
+/** What a tab load may record on its node for the hub's tab state (hub.js:418, 642-647: `node.tabOutcome`). */
+export interface TabOutcome {
+  status?: "loading" | "ready" | "empty" | "failed";
+  error?: unknown;
+  at?: number;
+  dataAt?: number | null;
+  offlineCopy?: boolean;
+  /** false: the node carries no data worth a footnote (hub.js:253-260). */
+  hasData?: boolean;
+}
 export type TabNode = HTMLElement & { tabOutcome?: TabOutcome };
 
 export interface HubDeps {

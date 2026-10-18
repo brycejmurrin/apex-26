@@ -7,7 +7,7 @@
  */
 import type { ScheduleSessionKey, SessionTime } from "../api";
 import type { HubDeps, MountedTab } from "../hub-deps";
-import { log } from "../log";
+import { mountTab } from "./mount";
 
 /** A calendar entry as far as the time helpers read it (api.ts ScheduleRace or a bare {date, time}). */
 export interface Timed { date?: string | null; time?: string | null }
@@ -324,52 +324,4 @@ export function mount(host: HTMLElement, deps: ScheduleDeps & Pick<HubDeps, "cle
     tab.dispose();
     return tab.loadSchedule();
   }, () => tab.dispose());
-}
-
-// MOUNT SEAM (apex-26): hub.js's loadTab (hub.js:404-445) owns spinner, swap
-// and error block; a standalone mount needs the same three steps. A refresh or
-// unmount bumps `gen` so a load still in flight never paints over a newer one.
-function mountTab(name: string, host: HTMLElement, deps: Pick<HubDeps, "el" | "clear" | "spinner">,
-                  load: () => Promise<HTMLElement>, onUnmount: () => void): MountedTab {
-  let gen = 0;
-  function refresh(): Promise<void> {
-    const myGen = ++gen;
-    deps.clear(host);
-    host.appendChild(deps.spinner());
-    return load().then((node) => {
-      if (myGen !== gen) return;
-      deps.clear(host);
-      host.appendChild(node);
-    }, (err: unknown) => {
-      if (myGen !== gen) return;
-      log.warn("tab " + name + " fail", err);
-      deps.clear(host);
-      host.appendChild(errorNode(deps.el, () => { void refresh(); }));
-    });
-  }
-  void refresh();
-  return {
-    refresh,
-    unmount() {
-      gen++;
-      onUnmount();
-      deps.clear(host);
-    },
-  };
-}
-
-// The UPSTREAM case of hub.js's errorBlock (hub.js:462-503), same classes.
-function errorNode(el: HubDeps["el"], retryFn: () => void): HTMLElement {
-  const w = el("div", "dh-error");
-  w.setAttribute("role", "status");
-  w.dataset.reason = "upstream";
-  const titleEl = el("div", "dh-error-msg", "SERVICE UNAVAILABLE");
-  titleEl.dataset.role = "title";
-  w.appendChild(titleEl);
-  w.appendChild(el("div", "dh-error-msg", "Couldn't reach the F1 data service. It may be busy or blocked — try again in a moment."));
-  const retry = el("button", "dh-retry", "RETRY");
-  retry.type = "button";
-  retry.addEventListener("click", retryFn);
-  w.appendChild(retry);
-  return w;
 }
