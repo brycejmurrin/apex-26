@@ -63,6 +63,10 @@ describe.skipIf(!haveF1)("TrackBuildProps port vs f1-game", () => {
 
   it.each(ids)("%s builds identically with the port", (id) => {
     const kits = kitsOf(f1!);
+    // Warm-up: f1-game's FIRST build of some circuits in a VM differs from
+    // later ones in pre-props fields (redbull: roadGeo, terrainGeo, _terrGrid,
+    // mesh#0-2, f1-game vs f1-game), so compare against a second build.
+    f1!.build(id);
     const base = f1!.build(id);
     const swapped = f1!.build(id, portOverride(f1!, kits));
     expect(diffDigests(base, swapped)).toEqual([]);
