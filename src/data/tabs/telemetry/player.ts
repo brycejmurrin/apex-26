@@ -11,11 +11,11 @@
  *   attachScrub                      telemetry-player.js:234-277
  *   playAnim / pauseAnim             telemetry-player.js:279-300
  *
- * External: CssZoom.viewportRect (f1-game js/ui/css-zoom.js:41-46) belongs to
- * the shell lane; until it is ported, viewportRect below falls back to
- * getBoundingClientRect, which is what f1-game does when CssZoom is absent.
+ * External: CssZoom.viewportRect (f1-game js/ui/css-zoom.js:41-46) is
+ * src/styles/css-zoom.ts.
  */
 import type { HubDeps } from "../../hub-deps";
+import { viewportRect } from "../../../styles/css-zoom";
 import {
   PADL, PADR, brakingDuel, clamp, dcode, distAtT, drsOpen, laneRole, sampleAt, signed,
   summaryTime, summaryValue, timeAtDist,
@@ -33,12 +33,6 @@ export interface TelemetryPlayer {
   pauseAnim(view: TelView): void;
   paintFrame(view: TelView): void;
   updateTextSummary(view: TelView): void;
-}
-
-// TODO(lane-shell): use the shell's CssZoom.viewportRect (js/ui/css-zoom.js:41)
-// once it is ported; it scales the rect when the engine reports unzoomed boxes.
-function viewportRect(canvas: HTMLElement): DOMRect {
-  return canvas.getBoundingClientRect();
 }
 
 export function create({ el, cssColor }: Pick<HubDeps, "el" | "cssColor">, renderer: FramePainter): TelemetryPlayer {
