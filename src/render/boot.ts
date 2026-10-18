@@ -39,7 +39,8 @@ export interface BootResult<R> {
   reason: BootReason;
 }
 
-function browserEnv(): BootEnv {
+/** The live page's boot inputs; callers override `search` to force a pin. */
+export function browserEnv(): BootEnv {
   const gpu = (navigator as Navigator & { gpu?: { requestAdapter(): Promise<unknown> } }).gpu;
   return {
     search: location.search,
@@ -61,11 +62,14 @@ async function probeAdapter(requestAdapter: BootEnv["requestAdapter"]): Promise<
   }
 }
 
-export async function createRenderer(canvas: HTMLCanvasElement): Promise<BootResult<WebGPURenderer>>;
 export async function createRenderer<R extends BootableRenderer>(
   canvas: HTMLCanvasElement,
   opts: BootOptions<R> & { factory: (params: RendererParams) => R | Promise<R> },
 ): Promise<BootResult<R>>;
+export async function createRenderer(
+  canvas: HTMLCanvasElement,
+  opts?: Omit<BootOptions<WebGPURenderer>, "factory">,
+): Promise<BootResult<WebGPURenderer>>;
 export async function createRenderer(
   canvas: HTMLCanvasElement,
   opts: BootOptions<BootableRenderer> = {},
