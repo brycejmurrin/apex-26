@@ -40,7 +40,8 @@ function rectangle() {
 const lat = (v: number) => (Math.round((v - Math.floor(v)) * 65535) % 65535) / 65535;
 
 const stable = (d: object) => {
-  const o = { ...(d as Record<string, unknown>) };
+  // JSON round trip, as storage does: the lattice yields -0 for small negatives (f1-game q()).
+  const o = JSON.parse(JSON.stringify(d)) as Record<string, unknown>;
   delete o.created; delete o.updated;
   return o;
 };
