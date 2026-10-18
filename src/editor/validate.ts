@@ -12,7 +12,8 @@
  * Differs from f1-game:
  * - `TrackMaps` (f1-game js/ui/track-maps.js) is an injected dependency
  *   (`setTrackMaps`), absent by default. f1-game's headless VM (and so the goldens)
- *   does not load it, which is the default here.
+ *   does not load it, which is the default here; designer.ts `mount` injects the
+ *   port (src/track/maps/track-maps.ts), as f1-game's browser always loads it.
  * - TrackPit, Tracks and TrackInsight are imports, so their `typeof X !==
  *   "undefined"` guards are always true and are gone; the try/catch around each
  *   call stays. The `Log.warn` in judge's insight catch is dropped.
@@ -35,7 +36,7 @@ export interface TrackMapsImpl {
   /** FAST / MEDIUM / SLOW (or the impl's own classes) from radius and |angle| in degrees. */
   classifyCorner?: (R: number, angDeg: number) => string;
 }
-// TODO(lane-editor): port js/ui/track-maps.js detectCorners/classifyCorner and inject them.
+// src/track/maps/track-maps.ts is the port; designer.ts mount() injects it for the mounted screen.
 let trackMaps: TrackMapsImpl | null = null;
 /** Inject (or clear, with null) TrackMaps. Absent by default: the goldens' "TrackMaps not loaded" branch. */
 export function setTrackMaps(impl: TrackMapsImpl | null): void { trackMaps = impl; }
