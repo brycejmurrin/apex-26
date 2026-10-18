@@ -23,6 +23,11 @@ export interface ApexInfo {
   readonly simT: number;
   readonly steps: number;
   readonly paused: boolean;
+  /** ms from navigation start to the first rendered frame, or null before it. */
+  readonly firstFrameMs: number | null;
+  readonly frames: number;
+  readonly drawCalls: number;
+  readonly triangles: number;
   readonly overridden: boolean;
 }
 
@@ -75,6 +80,10 @@ export function createDebugApi(app: App, backend: { name: string; reason: string
       simT: app.simT,
       steps: app.stepCount,
       paused: app.paused,
+      firstFrameMs: app.firstFrameAt,
+      frames: app.frames,
+      drawCalls: app.renderStats().drawCalls,
+      triangles: app.renderStats().triangles,
       overridden: app.input.overridden,
     }),
     physState,

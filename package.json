@@ -14,7 +14,8 @@
     "test": "vitest run",
     "check": "npm run typecheck && npm run test",
     "e2e": "playwright test",
-    "postinstall": "patch-package --error-on-fail --error-on-warn"
+    "postinstall": "patch-package --error-on-fail --error-on-warn",
+    "metrics": "node tools/metrics/slice.mjs"
   },
   "dependencies": {
     "@trystero-p2p/nostr": "0.25.4",

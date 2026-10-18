@@ -65,6 +65,10 @@ export class App {
   lastInput: PlayerInput | null = null;
   lastFrame: FrameResult = { dt: 0, steps: 0, dropped: 0, alpha: 0 };
   paused = false;
+  /** `performance.now()` when the first frame was rendered (time to first frame, T1.13). */
+  firstFrameAt: number | null = null;
+  /** Frames rendered since boot. */
+  frames = 0;
 
   private readonly chase: ChaseCam;
   private readonly carHandle: CarHandle;
@@ -182,6 +186,13 @@ export class App {
     const pose = this.chase.solve({ s, x, speed: c.speed, px, pz, head, yawRate: c.yawRateCur, pitch: 0, deploy: c.deploying, dt });
     this.renderer.setCamera(pose);
     this.renderer.renderFrame();
+    this.frames++;
+    if (this.firstFrameAt === null) this.firstFrameAt = performance.now();
+  }
+
+  /** The renderer's counters for the last frame (draw calls over every pass, triangles, objects). */
+  renderStats(): Readonly<{ drawCalls: number; triangles: number; objects: number }> {
+    return this.renderer.stats;
   }
 
   resize(w: number, h: number, dpr: number): void {
