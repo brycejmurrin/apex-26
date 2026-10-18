@@ -1,8 +1,8 @@
 # Goldens
 
 Reference output produced by f1-game's real code, used to prove the TypeScript port
-behaves identically. Regenerate only from the coordinator session (lane sessions may not
-execute f1-game code); never hand-edit.
+behaves identically. Regenerate with the producer named below, never by hand. Some lane
+sessions' auto mode refuses to execute f1-game code; if yours does, ask the coordinator.
 
 | file | producer | contents |
 |---|---|---|
