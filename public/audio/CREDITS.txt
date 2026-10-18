@@ -1,0 +1,6 @@
+Engine sound effects (copied from f1-game assets/sfx/CREDITS.txt)
+--------------------
+f1_engine.mp3 (sustained F1 engine drone) — F1 car engine clip provided by the
+project owner. Looped and pitched by rpm at runtime. Licensing of this clip is
+the project owner's responsibility. (f1_rev.mp3 is not copied: f1-game loads
+nothing from it, js/audio/engine.js:562-566.)
