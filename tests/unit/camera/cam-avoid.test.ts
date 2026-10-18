@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { applies, createCamAvoid, type CamAvoidFlyby, type CamTrackOps } from "../../../src/camera/cam-avoid";
 import { createFlybySeq, type FlybyTrack, type PropRec, type Vec3 } from "../../../src/camera/flyby-seq";
 import { sample } from "../../../src/track/core/tracks";
-import { f1Cam, haveF1, type F1Cam } from "./f1-cam-vm";
+import { f1Cam, haveF1, type F1Cam } from "./f1-flyby-vm";
 
 type Box = PropRec;
 const inside = (box: Box, eye: Readonly<Vec3>, m?: number | null): boolean => {

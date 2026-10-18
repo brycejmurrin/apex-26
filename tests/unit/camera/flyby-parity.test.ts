@@ -6,14 +6,14 @@
  * scripted time sweep of the whole flyby.
  *
  * Both sides read the SAME built track (f1-game's build in a VM, with its props
- * registry): see f1-cam-vm.ts. Skipped where f1-game is absent.
+ * registry): see f1-flyby-vm.ts. Skipped where f1-game is absent.
  */
 import { describe, expect, it } from "vitest";
 import { createCamAvoid } from "../../../src/camera/cam-avoid";
 import { createFlybySeq, DEFAULT, type FlybyShot, type Vec3 } from "../../../src/camera/flyby-seq";
 import * as Sight from "../../../src/camera/flyby-sight";
 import { createTracksideCams } from "../../../src/camera/trackside";
-import { bitDiff, f1Cam, haveF1, type F1Cam } from "./f1-cam-vm";
+import { bitDiff, f1Cam, haveF1, type F1Cam } from "./f1-flyby-vm";
 
 const CIRCUITS = ["monza", "monaco", "spa", "mont_tremblant"];
 const SAMPLES = 96;

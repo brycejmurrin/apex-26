@@ -20,7 +20,7 @@ import { resolve as resolveOverrides } from "../../../src/data/flyby-overrides";
 import { gridSlot } from "../../../src/track/core/mesh";
 import { buildTrack, curvature, defById, project, sample, wallAt } from "../../../src/track/core/tracks";
 import type { Sample, Track } from "../../../src/track/core/types";
-import { f1Cam, haveF1, type F1Cam } from "./f1-cam-vm";
+import { f1Cam, haveF1, type F1Cam } from "./f1-flyby-vm";
 
 const newSample = (): Sample => ({ p: [0, 0, 0], t: [0, 0, 0], r: [0, 0, 0], hw: 10 });
 

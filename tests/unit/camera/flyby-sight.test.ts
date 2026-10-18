@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { createFlybySeq, type FlybyTrack, type Vec3 } from "../../../src/camera/flyby-seq";
 import * as S from "../../../src/camera/flyby-sight";
 import { sample } from "../../../src/track/core/tracks";
-import { f1Cam, haveF1, type F1Cam } from "./f1-cam-vm";
+import { f1Cam, haveF1, type F1Cam } from "./f1-flyby-vm";
 
 const fake = {
   total: 100,
