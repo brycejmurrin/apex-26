@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 test("HUD shows speed and gear while driving (T1.10)", async ({ page }) => {
   await page.goto("./");
   await expect(page.locator("#backend")).toHaveAttribute("data-backend", /^(WebGPU|WebGL2)$/);
+  await page.locator("#mb-tt").click();
   const speed = page.locator('#hud [data-k="speed"]');
   await expect(speed).toHaveText("0");
   await expect(page.locator('#hud [data-k="lap"]')).toHaveText("OUT");

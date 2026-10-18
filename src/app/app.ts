@@ -65,6 +65,10 @@ export class App {
   lastInput: PlayerInput | null = null;
   lastFrame: FrameResult = { dt: 0, steps: 0, dropped: 0, alpha: 0 };
   paused = false;
+  /** "menu": the title screen is up and nothing simulates; "race": a session is running. */
+  mode: "menu" | "race" = "menu";
+  /** Called when pause opens or closes (the pause menu follows it). */
+  onPause: ((paused: boolean) => void) | null = null;
 
   private readonly chase: ChaseCam;
   private readonly carHandle: CarHandle;
@@ -123,6 +127,37 @@ export class App {
     uploadTrack(this.renderer, opts.track.track.geo);
     this.carHandle = this.renderer.addCar(placeholderCarModel());
     this.hud = opts.hudParent ? new Hud(opts.hudParent) : null;
+    this.hud?.setVisible(false);
+  }
+
+  /** Start (or restart) the time trial from grid slot 0. */
+  startTimeTrial(): void {
+    Object.assign(this.player, makePlayerCar());
+    gridCar(this.player, this.track, 0);
+    this.world.raceT = 0;
+    Object.assign(this.world.timing, newLapTiming());
+    this.chase.reset();
+    this.input.clearEdges();
+    this.input.releaseKeys();
+    this.loop.resetClock();
+    this.loop.acc = 0;
+    this.mode = "race";
+    this.hud?.setVisible(true);
+    this.setPaused(false);
+  }
+
+  /** Leave the session for the title screen. */
+  quitToMenu(): void {
+    this.setPaused(false);
+    this.mode = "menu";
+    this.hud?.setVisible(false);
+  }
+
+  setPaused(p: boolean): void {
+    if (this.paused === p) return;
+    this.paused = p;
+    if (p) { this.input.clearEdges(); this.input.releaseKeys(); } else this.loop.resetClock();
+    this.onPause?.(p);
   }
 
   /** One fixed step outside the frame loop (debug API): snapshot, then step. */
@@ -151,13 +186,14 @@ export class App {
   /** One display frame at rAF timestamp `now` (ms). */
   frame(now: number): void {
     this.input.poll();
-    if (this.input.consume("pause")) this.paused = !this.paused;
-    if (this.input.consume("recover")) this.physics.rescuePlayer(this.player);
-    if (this.paused) this.input.clearEdges();
-    const f = this.loop.frame(now, !this.paused);
+    const racing = this.mode === "race";
+    if (this.input.consume("pause") && racing) this.setPaused(!this.paused);
+    if (this.input.consume("recover") && racing && !this.paused) this.physics.rescuePlayer(this.player);
+    if (this.paused || !racing) this.input.clearEdges();
+    const f = this.loop.frame(now, racing && !this.paused);
     this.lastFrame = f;
     this.render(f.alpha, Math.min(f.dt, 1 / 20));
-    this.hud?.update(this.hudState(), now);
+    if (racing) this.hud?.update(this.hudState(), now);
   }
 
   hudState(): HudState {
