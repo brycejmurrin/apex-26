@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<!-- Port of f1-game overlay.html: the stream / broadcast overlay page (OBS browser source).
+     ?demo=1 animates a sample race; ?scale ?rows ?side=right ?chroma=green|blue|magenta ?only=captions. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#00000000">
+<title>Apex 26 — broadcast overlay</title>
+<style>
+  :root { color-scheme: dark; --ov-scale: 1; --ov-red: #e10600; --ov-ink: #f8f8fb; --ov-dim: #b7bac5;
+    --ov-panel: rgba(9,10,16,.9); --ov-line: rgba(255,255,255,.18); }
+  * { box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent; }
+  html[data-chroma="green"], html[data-chroma="green"] body { background: #00b140; }
+  html[data-chroma="blue"], html[data-chroma="blue"] body { background: #0047bb; }
+  html[data-chroma="magenta"], html[data-chroma="magenta"] body { background: #ff00ff; }
+  body { color: var(--ov-ink); font: 700 15px/1.15 system-ui, sans-serif; letter-spacing: .04em; }
+  #overlay { position: fixed; inset: 0; pointer-events: none; transform: scale(var(--ov-scale)); transform-origin: left top; }
+  body[data-side="right"] #overlay { transform-origin: right top; }
+  .ov-tower { position: absolute; left: 2.2vw; top: 7vh; width: 250px; height: 680px; }
+  body[data-side="right"] .ov-tower { left: auto; right: 2.2vw; }
+  .ov-row { position: absolute; inset: 0 auto auto 0; width: 250px; height: 31px; display: grid;
+    grid-template-columns: 31px 5px 1fr 70px 24px; align-items: center; gap: 7px; padding: 0 8px 0 0;
+    background: linear-gradient(90deg, rgba(7,8,13,.97), rgba(7,8,13,.82)); border-bottom: 1px solid var(--ov-line);
+    transition: transform 220ms cubic-bezier(.2,.8,.2,1), opacity 160ms; font-variant-numeric: tabular-nums; }
+  .ov-row[hidden] { display: none; }
+  .ov-pos { display: grid; place-items: center; align-self: stretch; background: #f5f5f7; color: #0b0c10; }
+  .ov-team { width: 5px; height: 20px; }
+  .ov-code { font-size: 16px; }
+  .ov-gap { color: var(--ov-dim); text-align: right; font-size: 12px; }
+  .ov-tyre { width: 20px; height: 20px; display: grid; place-items: center; border: 1px solid currentColor; border-radius: 50%;
+    font: 800 10px/1 system-ui; color: #ffd52e; }
+  .ov-row[data-you="1"] { outline: 2px solid #fff; outline-offset: -2px; }
+  .ov-battle { position: absolute; top: 5vh; left: 50%; translate: -50% 0; min-width: 300px; display: grid;
+    grid-template-columns: 1fr auto; border-top: 4px solid var(--ov-red); background: var(--ov-panel); text-align: center;
+    padding: 10px 14px; box-shadow: 0 8px 28px rgba(0,0,0,.35); }
+  .ov-battle[hidden] { display: none; }
+  .ov-battle::before { content: "BATTLE"; position: absolute; left: 0; top: -18px; padding: 3px 8px; background: var(--ov-red);
+    font-size: 10px; letter-spacing: .16em; }
+  .ov-battle span { margin-left: 18px; color: #ffe338; font-variant-numeric: tabular-nums; }
+  .ov-sectors { position: absolute; right: 3vw; top: 7vh; display: flex; gap: 5px; }
+  body[data-side="right"] .ov-sectors { right: auto; left: 3vw; }
+  .ov-sectors span { min-width: 86px; padding: 8px 10px; background: var(--ov-panel); text-align: center; font-variant-numeric: tabular-nums; }
+  .ov-sectors [data-tone="purple"] { color: #d76cff; border-bottom: 3px solid #b94cff; }
+  .ov-sectors [data-tone="green"] { color: #5ef08a; border-bottom: 3px solid #37d96b; }
+  .ov-sectors [data-tone="yellow"] { color: #ffe338; border-bottom: 3px solid #f4cf00; }
+  .ov-caption { position: absolute; left: 50%; bottom: 7vh; translate: -50% 0; width: min(680px, 86vw);
+    display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: center; padding: 12px 18px;
+    border-left: 5px solid var(--ov-red); background: var(--ov-panel); box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+  .ov-caption[hidden] { display: none; }
+  .ov-caption strong { color: #fff; white-space: nowrap; }
+  .ov-caption span { color: #e9eaf0; font-weight: 600; }
+  body[data-only="captions"] .ov-tower, body[data-only="captions"] .ov-battle, body[data-only="captions"] .ov-sectors { display: none; }
+  html[data-chroma] .ov-row, html[data-chroma] .ov-battle, html[data-chroma] .ov-caption {
+    box-shadow: none; text-shadow: -1px -1px #000, 1px -1px #000, -1px 1px #000, 1px 1px #000; }
+  @media (prefers-reduced-motion: reduce) { .ov-row { transition: none; } }
+  @media (max-width: 700px) { .ov-tower { top: 12px; left: 12px; } .ov-sectors { top: 12px; right: 12px; }
+    .ov-caption { bottom: 12px; } .ov-battle { top: 12px; } }
+</style>
+</head>
+<body data-side="left">
+<main id="overlay" role="region" aria-label="Apex 26 race broadcast overlay">
+  <section class="ov-tower" aria-label="Race timing"></section>
+  <section class="ov-battle" aria-live="polite" hidden><strong></strong><span></span></section>
+  <section class="ov-sectors" aria-label="Sector times"><span>S1</span><span>S2</span><span>S3</span></section>
+  <section class="ov-caption" aria-live="polite" hidden><strong></strong><span></span></section>
+</main>
+<script type="module" src="/src/overlay/overlay-page.ts"></script>
+</body>
+</html>
