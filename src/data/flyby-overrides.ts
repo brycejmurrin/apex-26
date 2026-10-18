@@ -7,10 +7,13 @@
  * mutating either source. Circuit geometry remains in src/circuits/.
  */
 
-/** One keyframe anchor. TODO(lane-shell): share the flyby shot type with src/camera/. */
-export interface FlybyAnchor { at: string; n: number; off: number; x: number; y: number }
+import type { FlybyPose } from "../camera/flyby-seq";
+
+/** One keyframe anchor: the flyby sequencer's pose (src/camera/flyby-seq.ts). */
+export type FlybyAnchor = FlybyPose;
 export interface FlybyPatch { eye?: FlybyAnchor[]; look?: FlybyAnchor[]; fov?: readonly number[] }
-export interface FlybyShot extends FlybyPatch { id: string }
+/** Any shot with an id (src/camera/flyby-seq.ts FlybyShot satisfies it; f1-game shots may omit the id). */
+export interface FlybyShot extends FlybyPatch { id?: string | undefined }
 
 export const BY_TRACK: Readonly<Record<string, Readonly<Record<string, Readonly<FlybyPatch>>>>> = Object.freeze({
   monaco: Object.freeze({
@@ -45,7 +48,8 @@ export function resolve<S extends FlybyShot>(trackId: string, defaults: readonly
   if (Array.isArray(saved) && saved.length) return saved;
   const patch = patches(trackId);
   if (!patch) return defaults;
-  return defaults.map((shot) => Object.prototype.hasOwnProperty.call(patch, shot.id)
+  // f1-game's hasOwnProperty(patch, undefined) tests the key "undefined": never a shot id.
+  return defaults.map((shot) => shot.id !== undefined && Object.prototype.hasOwnProperty.call(patch, shot.id)
     ? Object.assign({}, shot, patch[shot.id])
     : shot);
 }
