@@ -1,3 +1,5 @@
+import { clamp } from "./math";
+
 /**
  * The AiDrive helpers the contact and wall code reads: masses, restitution,
  * rub and wall scrub rates, and which car of a level pair yields.
@@ -51,4 +53,12 @@ export function wallSteerScrub(street: boolean): number {
 /** AI has no heading slide; this is the clamp-frame speed scrub. */
 export function wallAiScrub(street: boolean): number {
   return street ? 12 : 12;
+}
+
+/** Slipstream top-speed gain per unit tow (ai-drive.js:143-150); the player passes no hunger. */
+export function towGain(street: boolean, hunger?: number): number {
+  const base = street ? 0.022 : 0.045;
+  if (street) return base;
+  const h = clamp((hunger || 1) - 1, 0, 1);
+  return base * (1 + h * 0.65);
 }

@@ -117,6 +117,8 @@ const pick = (c) => Object.fromEntries(STATE.map((k) => [k, c[k] === undefined ?
 const world = () => ({
   raceT: G.raceT, state: G.state, seed: G.seed, PACE: G.PACE, vTop: G.vTop(), aTop: G.aTop(), LAT_MAX: G.LAT_MAX,
   PLAYER_GRIP: G.PLAYER_GRIP, FRONT_GRIP: G.FRONT_GRIP, DRIFT: G.DRIFT, YAW_INERTIA: G.YAW_INERTIA, YAW_DAMP: G.YAW_DAMP,
+  WHEELBASE: G.WHEELBASE, STEER_EXPO: G.STEER_EXPO, STEER_MAX_SLIP: G.STEER_MAX_SLIP, STEER_SPEED_REF: G.STEER_SPEED_REF,
+  raceAeroMode: G.raceAeroMode, raceDirtyAir: G.raceDirtyAir,
   ROAD_FOLLOW: G.ROAD_FOLLOW, raceWeather: G.raceWeather, session: G.session, lapsTarget: G.lapsTarget,
   trackTotal: G.track.total, street: !!G.track.street, difficulty: G.difficulty,
 });
