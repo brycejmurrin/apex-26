@@ -2,8 +2,8 @@
  * End-to-end TS scenery: f1-game's engine builds the track, and EVERYTHING the
  * props pass runs is the port — build-props.ts on createTsKits (models, graph,
  * themes, landmark/circuit kits, guards, nature, structures, identity, venue,
- * data) plus the circuit's codemodded closure. Kits not yet ported (city, pits)
- * are f1-game's. Must be bit-identical to f1-game's own build.
+ * city, pits, data) plus the circuit's codemodded closure. Must be
+ * bit-identical to f1-game's own build.
  * F1_SWEEP=1 runs all 52 circuits.
  */
 import { describe, expect, it } from "vitest";
@@ -29,7 +29,6 @@ describe.skipIf(!haveF1)("TS scenery end to end vs f1-game", () => {
     const opt = (name: string): unknown => f1!.sandbox[name] ?? null;
     const kits = createTsKits(
       core,
-      { SceneryCity: f1!.global("SceneryCity"), SceneryPits: opt("SceneryPits") } as unknown as Pick<SceneryKits, "SceneryCity" | "SceneryPits">,
       {
         Tracks: f1!.global("Tracks"),
         TrackScenery: { [id]: (api: SceneryApi) => closure(api, core) },

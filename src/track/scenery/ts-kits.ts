@@ -21,14 +21,12 @@ import * as Nature from "./nature";
 import * as Structures from "./structures";
 import * as Identity from "./identity";
 import * as Venue from "./venue";
+import * as City from "./city";
+import * as Pits from "./pits";
 import * as Data from "./data";
-
-/** Kits not yet ported, supplied by the caller (f1-game's in the parity test). */
-export type PendingKits = Pick<SceneryKits, "SceneryCity" | "SceneryPits">;
 
 export function createTsKits(
   core: SceneryCore,
-  pending: PendingKits,
   shell: Pick<SceneryKits, "Tracks" | "TrackScenery" | "LightTune" | "GLX">,
 ): SceneryKits {
   const k: SceneryKits = {
@@ -49,8 +47,8 @@ export function createTsKits(
     SceneryVenue: {
       build: (ctx, theme, excluded) => Venue.build(ctx as never, theme as never, excluded as never, core),
     },
-    SceneryCity: pending.SceneryCity,
-    SceneryPits: pending.SceneryPits ?? null,
+    SceneryCity: { create: (ctx) => City.create(ctx as never, core) as never },
+    SceneryPits: { build: (ctx) => Pits.build(ctx as never, core) as never },
     TrackSceneryData: Data,
     Tracks: shell.Tracks,
     TrackScenery: shell.TrackScenery ?? null,
