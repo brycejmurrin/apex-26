@@ -11,6 +11,7 @@ import type { BankProfile, NodeGrid } from "./mesh";
 import type { LineCorner } from "./line";
 import type { PitModel } from "./pit";
 import type { SurfaceProfile } from "./surface";
+import type { CompactStats, GeomBlock, StripStats } from "./hidden-faces";
 
 /** A mutable 3-vector. f1-game uses plain `[x, y, z]` arrays everywhere. */
 export type V3 = [number, number, number];
@@ -22,12 +23,38 @@ export type RV3 = readonly [number, number, number];
 export type MatAt = (x: number, y: number, z: number) => number;
 
 /**
+ * A finished geometry buffer as the build keeps it: plain arrays, or the typed
+ * views `sealGeometry` (models.js:68) and the hidden-face strip / compaction
+ * (hidden-faces.js:535, :583) leave on the props buffer. Every consumer reads
+ * it through `length` and `[i]` (validateGeometry, packGeom, the upload).
+ */
+export interface SealedGeom {
+  pos: ArrayLike<number>;
+  nrm: ArrayLike<number>;
+  col: ArrayLike<number>;
+  idx: ArrayLike<number>;
+  mat?: ArrayLike<number>;
+  trk?: ArrayLike<number>;
+  _mat?: number;
+  _matAt?: MatAt | null;
+  /** Upload hints set by tracks.js buildSteps; inert in the port. */
+  _keepPositions?: boolean;
+  _keepFullGeometry?: boolean;
+  /** The hidden-face strip's stats (tracks.js:353, hidden-faces.js:513). */
+  _hidden?: StripStats;
+  /** The vertex compaction's stats (tracks.js:360, hidden-faces.js:557). */
+  _compact?: CompactStats;
+  /** appendBuffer's provenance blocks (models.js:80), shifted by compact (hidden-faces.js:590). */
+  __blocks?: GeomBlock[];
+}
+
+/**
  * A geometry accumulator: the `{ pos, nrm, col, idx, mat }` buffers every
  * emitter pushes into (geom.js addBox/emit, mesh.js buildRoad, tracks.js
  * buildGate). `_mat` is the current primitive's material id, `_matAt` an
  * optional per-vertex override (geom.js:163 emit).
  */
-export interface GeomOut {
+export interface GeomOut extends SealedGeom {
   pos: number[];
   nrm: number[];
   col: number[];
@@ -35,11 +62,6 @@ export interface GeomOut {
   mat?: number[];
   /** The road's track-space (s, x, hw) stream per vertex (mesh.js buildRoad). */
   trk?: number[];
-  _mat?: number;
-  _matAt?: MatAt | null;
-  /** Upload hints set by tracks.js buildSteps; inert in the port. */
-  _keepPositions?: boolean;
-  _keepFullGeometry?: boolean;
 }
 
 /** The scratch sample `{ p, t, r, hw }` (spline.js:90 sample). */
@@ -151,9 +173,9 @@ export interface Track {
   geometryDiagnostics?: GeometryDiagnostic[];
   roadGeo?: GeomOut;
   terrainGeo?: GeomOut;
-  propsGeo?: GeomOut | null;
-  glassGeo?: GeomOut | null;
-  waterGeo?: GeomOut | null;
+  propsGeo?: SealedGeom | null;
+  glassGeo?: SealedGeom | null;
+  waterGeo?: SealedGeom | null;
   _terrGrid?: TerrainGrid;
   propTop?: number;
   startGate?: StartGate;
@@ -167,9 +189,9 @@ export interface TrackGeometry {
   floor: GeomOut;
   road: GeomOut;
   terrain: GeomOut;
-  props: GeomOut;
-  glass: GeomOut;
-  water: GeomOut;
+  props: SealedGeom;
+  glass: SealedGeom;
+  water: SealedGeom;
   gate: GeomOut;
   startline: GeomOut;
 }
