@@ -54,3 +54,23 @@ lane map those sessions work from. The coordinator is session
 Later lanes, started by the coordinator when their inputs exist: `editor` (track
 designer, `src/editor/`, needs track), `xr` (`src/xr/`, needs render), `garage`
 (`src/garage/`, needs car + race), and `debris` (Rapier side-worlds, `src/physics/debris/`).
+
+## Live sessions (2026-10-18)
+
+| lane | session id |
+|---|---|
+| coordinator | session_01GiW52Wfj2t9pFRmy26vhby |
+| track | session_011ffxeAVgs8HAP7xPBD4oKx |
+| physics | session_01Ni5hh1aPkKXby4JHg1yjXR |
+| render | session_01VKfkKzXXB9SdaLr3g6srt3 |
+| car | session_01XAuqFENYFAd7A6YXrhpdws |
+| shell | session_01VAsB9WeJepigBfQp5KztWD |
+| scenery | session_012xrhXFCPErJJLFnqEbJauR |
+| audio | session_01WZRSgxCphpfWRxkArKrsL7 |
+| race | session_01M95Vf3AMimBx75Ev2vmjm5 |
+| data | session_01SHN96cJYkDTP4a5iiedaNq |
+| net | session_01LW67cfZkhLCsMu22aq6Zyz |
+| f1-game oracle (f1-game repo) | session_01UNGyfauYf4UT9pXzJV4zQz |
+
+Lanes may message each other directly (`send_message`) for interface questions in their
+own seams; contract changes still go through the coordinator.
