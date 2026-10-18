@@ -9,6 +9,8 @@
 import type { BankingOut, PlayerInput, TrackSample } from "../../src/contracts";
 import { monza } from "../../src/circuits/defs/monza";
 import type { PhysicsTrack, PostLimits, WallLimits } from "../../src/physics/track";
+import type { AiTrackQuery } from "../../src/sim/player-step";
+import { zoneAt, type AeroZone } from "../../src/physics/aero-zones";
 import * as Tyre from "../../src/physics/tyre-model";
 import { newLapTiming } from "../../src/sim/player-step-lap";
 import {
@@ -37,13 +39,19 @@ export class TapeDivergence extends Error {}
 const ARC = new Set(["curvature", "bankAngle"]);
 
 /** A PhysicsTrack whose every query is served, in order, from one step's tape. */
-export function tapeTrack(total: number, street: boolean): { track: PhysicsTrack; load(step: number, tape: Entry[]): void; finish(): void; arcSkipped: () => number } {
+export function tapeTrack(
+  total: number,
+  street: boolean,
+  n = 0,
+): { track: PhysicsTrack; ai: AiTrackQuery; load(step: number, tape: Entry[]): void; finish(): void; arcSkipped: () => number } {
   let tape: Entry[] = [];
   let i = 0;
   let stepNo = -1;
   let arc = 0;
   function next(fn: string, args: unknown[]): Entry {
-    while (i < tape.length && ARC.has((tape[i] as Entry)[0])) {
+    // f1-game's arc reads the port never makes (the player's c.kCur) are
+    // skipped; an arc read the port DOES make (an AI car) is matched like any.
+    while (!ARC.has(fn) && i < tape.length && ARC.has((tape[i] as Entry)[0])) {
       i++;
       arc++;
     }
@@ -105,8 +113,30 @@ export function tapeTrack(total: number, street: boolean): { track: PhysicsTrack
       return out;
     },
   };
+  const _ln = { x: 0, w: 0 },
+    _atk = { q: 0, toTurnIn: 0 };
+  const ai: AiTrackQuery = {
+    n,
+    curvature: (s) => next("curvature", [s])[2] as number,
+    bankAngle: (s) => next("bankAngle", [s])[2] as number,
+    lineAt(s, fam) {
+      const r = next("lineAt", [s, fam === undefined ? null : fam])[3] as [number, number];
+      _ln.x = r[0];
+      _ln.w = r[1];
+      return _ln;
+    },
+    pathK: (s) => next("pathK", [s])[2] as number,
+    attackAt(s) {
+      const r = next("attackAt", [s])[2] as [number, number];
+      _atk.q = r[0];
+      _atk.toTurnIn = r[1];
+      return _atk;
+    },
+    attackQ: (k) => next("attackQ", [k])[2] as number,
+  };
   return {
     track,
+    ai,
     load(step: number, t: Entry[]): void {
       tape = t;
       i = 0;
@@ -127,17 +157,31 @@ export function tapeTrack(total: number, street: boolean): { track: PhysicsTrack
 }
 
 /** The golden's initial car: {$undef} → present-but-undefined, {$obj} → object. */
-export function carFrom(raw: Record<string, unknown>): PlayerCar {
+export function carFrom(raw: Record<string, unknown>, cars?: PlayerCar[]): PlayerCar {
   const c: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(raw)) {
     if (v && typeof v === "object" && !Array.isArray(v)) {
-      const o = v as { $undef?: boolean; $obj?: Record<string, unknown> };
+      const o = v as { $undef?: boolean; $obj?: Record<string, unknown>; $car?: number };
       if (o.$undef) c[k] = undefined;
-      else if (o.$obj) c[k] = { ...o.$obj };
+      else if (o.$obj) c[k] = structuredClone(o.$obj);
+      else if (o.$car !== undefined) c[k] = o.$car; // resolved by fieldFrom once every car exists
       else c[k] = v;
     } else c[k] = v;
   }
+  void cars;
   return c as unknown as PlayerCar;
+}
+
+/** Every car of a race golden, with {$car: i} references resolved to the car objects. */
+export function fieldFrom(raws: Record<string, unknown>[]): PlayerCar[] {
+  const cars = raws.map((r) => carFrom(r));
+  raws.forEach((r, i) => {
+    for (const [k, v] of Object.entries(r)) {
+      const o = v as { $car?: number } | null;
+      if (o && typeof o === "object" && o.$car !== undefined) (cars[i] as unknown as Record<string, unknown>)[k] = o.$car >= 0 ? cars[o.$car] : null;
+    }
+  });
+  return cars;
 }
 
 /** A scripted __apex.setInput object as the full PlayerInput (absent = f1-game's defaults). */
@@ -208,13 +252,13 @@ export function replay(name: (typeof TRACES)[number]): ReplayResult {
     gearsManual: false,
     autoThrottle: false,
     liveInput: false,
-    soundOn: false,
+    soundOn: !!w["soundOn"],
     weather: DRY,
     wind: CALM,
     pits: NO_PITS,
     raceCtl: GREEN_FLAG,
     tyres,
-    aeroZoneAt: () => false,
+    aeroZoneAt: (s: number) => !!zoneAt((w["aeroZones"] as AeroZone[] | undefined) ?? [], w["trackTotal"] as number, s),
     timing: newLapTiming(),
     netPlay: { owns: () => false },
   };
