@@ -1,6 +1,7 @@
 // Dev-only car demo (/car-demo.html): the procedural car under the renderer boot
 // (src/render/boot.ts), on a ground plane with orbit controls. Query parameters:
 //   team=<TEAM_STYLE id>   c1=rrggbb  c2=rrggbb   wheels=0   spin=0   smooth=0|1
+//   cam=x,y,z  look=x,y,z   (camera position and orbit target, metres)
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import * as THREE from "three/webgpu";
 import { createRenderer } from "../render/boot";
@@ -24,9 +25,13 @@ renderer.setSize(window.innerWidth, window.innerHeight, false);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x8fa6bf);
 const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.05, 200);
-camera.position.set(4.2, 1.8, 5.2);
+const xyz = (s: string | null, d: [number, number, number]): [number, number, number] => {
+  const v = (s ?? "").split(",").map(Number);
+  return v.length === 3 && v.every(Number.isFinite) ? [v[0]!, v[1]!, v[2]!] : d;
+};
+camera.position.set(...xyz(q.get("cam"), [4.2, 1.8, 5.2]));
 const controls = new OrbitControls(camera, canvas);
-controls.target.set(0, 0.4, 0);
+controls.target.set(...xyz(q.get("look"), [0, 0.4, 0]));
 controls.update();
 
 scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x3a3630, 1.4));
