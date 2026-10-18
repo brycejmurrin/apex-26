@@ -55,10 +55,9 @@ lane map those sessions work from. The coordinator is session
 | data | data hub | `src/data/` | OpenF1 + Jolpica clients (typed) with caching | Data Hub tabs: schedule, standings, last race, live, telemetry, export |
 | net | multiplayer | `src/net/` | WebRTC transport, Nostr signalling, invite/QR (`js/net/`) | lobby, replicated rivals, host-authoritative snapshots (20 Hz) |
 
-Reassigned (2026-10-18): the track lane also owns `editor` (`src/editor/`); the net lane also owns `src/pwa/` (moved from shell), `src/overlay/` and `src/xr/`.
+Reassigned (2026-10-18): the track lane also owns `editor` (`src/editor/`); the net lane also owns `src/pwa/` (moved from shell), `src/overlay/` and `src/xr/`; the data lane also owns `src/styles/` (global CSS, moved from shell) and `src/garage/`.
 
-Later lanes, started by the coordinator when their inputs exist: `garage`
-(`src/garage/`, needs car + race), and `debris` (Rapier side-worlds, `src/physics/debris/`).
+Later lanes, started by the coordinator when their inputs exist: `debris` (Rapier side-worlds, `src/physics/debris/`).
 
 ## Live sessions (2026-10-18)
 
@@ -75,7 +74,7 @@ Later lanes, started by the coordinator when their inputs exist: `garage`
 | race | session_01M95Vf3AMimBx75Ev2vmjm5 |
 | data | session_01SHN96cJYkDTP4a5iiedaNq |
 | net | session_01LW67cfZkhLCsMu22aq6Zyz |
-| f1-game oracle (f1-game repo) | session_01UNGyfauYf4UT9pXzJV4zQz |
+| f1-game oracle (f1-game repo, archived after PR #2835 merged) | session_01UNGyfauYf4UT9pXzJV4zQz |
 
 Lanes may message each other directly (`send_message`) for interface questions in their
 own seams; contract changes still go through the coordinator.
