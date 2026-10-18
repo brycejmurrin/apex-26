@@ -5,6 +5,7 @@ test("keyboard drives the car (T1.9)", async ({ page }) => {
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("./");
   await expect(page.locator("#backend")).toHaveAttribute("data-backend", /^(WebGPU|WebGL2)$/);
+  await page.locator("#mb-tt").click();
   await page.waitForFunction(() => !!window.__apex);
   const prog0 = await page.evaluate(() => window.__apex!.physState().prog);
   await page.keyboard.down("ArrowUp");
