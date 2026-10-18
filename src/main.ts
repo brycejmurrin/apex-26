@@ -1,17 +1,16 @@
 import * as THREE from "three/webgpu";
-import { backendName } from "./render/backend";
+import { createRenderer } from "./render/boot";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game")!;
 const label = document.querySelector<HTMLElement>("#backend")!;
 
-const renderer = new THREE.WebGPURenderer({ canvas, antialias: true });
+const { renderer, backend, reason } = await createRenderer(canvas);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight, false);
-await renderer.init();
 
-const backend = backendName(renderer);
-label.textContent = backend;
+label.textContent = `${backend} (${reason})`;
 label.dataset.backend = backend;
+label.dataset.reason = reason;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0b0d12);
