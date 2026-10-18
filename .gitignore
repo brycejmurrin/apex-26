@@ -4,3 +4,5 @@ test-results/
 playwright-report/
 *.log
 .claude/worktrees/
+scratch/
+artifacts/
