@@ -76,6 +76,33 @@ export interface ChaseInput {
   readonly dt: number;
 }
 
+/** The eased lens inputs drive-chase reads (f1-game feel.js:209-214 `ctx`), each 0..1 (yaw/slip -1..1). */
+export interface ChaseLensCtx {
+  readonly sp: number;
+  readonly yaw: number;
+  readonly brake: number;
+  readonly slip: number;
+}
+
+/** The chase-family modes drive-chase owns (drive-chase.js:8). */
+export const CHASE_LENS_MODES = ["chase", "far", "drift", "low", "reverse"] as const;
+
+/**
+ * f1-game js/camera/drive-chase.js:12-21 `DriveChase.apply`, verbatim: the FOV
+ * delta in degrees for a chase-family `mode`, or null for any other mode (the
+ * caller then tries the broadcast and onboard lenses). Lens only: it never
+ * moves the eye or the aim.
+ */
+export function chaseLens(mode: string, ctx: ChaseLensCtx): number | null {
+  const sp = ctx.sp, yaw = ctx.yaw, brake = ctx.brake, slip = ctx.slip;
+  if (mode === "chase") return 4 * sp + 2 * Math.abs(yaw) + 2 * brake;
+  if (mode === "far") return 7 * sp + 0.4 * Math.abs(yaw);
+  if (mode === "drift") return 3 * sp + 6 * Math.abs(yaw) + 4 * Math.abs(slip);
+  if (mode === "low") return 5 * sp;
+  if (mode === "reverse") return 1.5 * sp;
+  return null;
+}
+
 export class ChaseCam {
   private readonly fol = new Follow();
   private readonly a: TrackSample = { p: [0, 0, 0], t: [0, 0, 1], r: [1, 0, 0], hw: 7 };
@@ -139,7 +166,7 @@ export class ChaseCam {
     const sp = this.fol.follow("sp:chase", clamp(spN, 0, 1), DRIVE_CHASE.sp, dt);
     const yaw = this.fol.follow("yaw:chase", clamp(c.yawRate / 1.1, -1, 1), DRIVE_CHASE.yaw, dt);
     const brake = this.fol.follow("brk:chase", clamp(c.pitch / 0.025, 0, 1), DRIVE_CHASE.brake, dt);
-    return 4 * sp + 2 * Math.abs(yaw) + 2 * brake;
+    return chaseLens("chase", { sp, yaw, brake, slip: 0 }) ?? 0;
   }
 
   private centreY(s: number): number {
