@@ -242,8 +242,8 @@ export const HOWTO = Object.freeze({
 const COACH_KEY = "designerCoached";
 const stampKind = (name: string): TrackStamps.StampKind | undefined => (TrackStamps.KINDS as { [k: string]: TrackStamps.StampKind | undefined })[name];
 
-/** One TrackDesigner: f1-game's IIFE body (designer.js:12-2519) over `deps`. */
-/** `mapsDefault`: the TrackMaps used while `deps.trackMaps` is absent (mount passes the port). */
+/** One TrackDesigner: f1-game's IIFE body (designer.js:12-2519) over `deps`.
+ *  `mapsDefault` is the TrackMaps used while `deps.trackMaps` is absent (mount passes the port). */
 function createDesigner(deps: DesignerDeps, mapsDefault: DesignerDeps["trackMaps"] = null) {
   const S = TrackShape;
   const Log = {
@@ -2796,8 +2796,8 @@ export function mount(el: HTMLElement, deps: DesignerDeps): DesignerHandle {
   }
   // f1-game's browser always loads js/ui/track-maps.js: the mounted screen gets the
   // ported TrackMaps for its thumbnails and card ink whenever deps.trackMaps is
-  // absent (read live, as every other dep is, so a later deps edit still wins), and validate.ts gets it for
-  // bakeTurns / insight's classes. The unmounted default stays TrackMaps-less (the
+  // absent (read live, as every other dep is, so a later deps edit still wins),
+  // and validate.ts gets it for bakeTurns / insight's classes. The unmounted default stays TrackMaps-less (the
   // goldens' headless VM); destroy() puts back whatever was injected before.
   const priorMaps = TrackValidate.getTrackMaps();
   TrackValidate.setTrackMaps(TrackMaps);
