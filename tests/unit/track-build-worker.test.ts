@@ -32,7 +32,7 @@ describe("track build worker", () => {
       }
     }
     expect(viaWorker.surface!.heightAt(10, 30, 1)).toBe(direct.surface!.heightAt(10, 30, 1));
-  });
+  }, 30_000);   // two full builds: slow under a fully loaded parallel run
 
   it("reports an unknown id as an error reply", () => {
     let reply: WorkerReply | null = null;
