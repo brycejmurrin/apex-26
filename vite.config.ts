@@ -8,6 +8,11 @@ export default defineConfig({
     sourcemap: true,
     // three/webgpu alone is ~780 kB min / ~215 kB gz; budgets are tracked in docs/PLAN.md T1.13.
     chunkSizeWarningLimit: 1000,
+    // render-demo.html is the renderer lane's demo page (PLAN T1.7); built so the e2e
+    // smoke can load it from `vite preview`.
+    rollupOptions: {
+      input: { main: "index.html", "render-demo": "render-demo.html" },
+    },
   },
   test: {
     include: ["tests/unit/**/*.test.ts"],
