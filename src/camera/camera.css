@@ -5,9 +5,10 @@
    Ported from f1-game css/tuner.css (the shared tuner vocabulary and the
    camera-tuner rules: :30-72, :169-252, :257-290, :306-352, :440-493) and
    css/cockpit-preview.css:1-12, verbatim except:
-   - selector lists that named the other docked panels (#lighting, #flyby,
-     #freecam, #garrival) keep only the camera tuner's ids; those panels' lanes
+   - selector lists that named the other docked panels keep the camera
+     lane's ids (#camtune, #flyby, #freecam); #lighting and #garrival's lanes
      bring their own copy until the shared vocabulary moves to src/styles/.
+     The flyby editor / free camera specifics are in ./photo.css.
      TODO(lane-data): move .adv-*, .tune-*, .lt-tabs, .lt-preview-* to
      src/styles/components.css when a second tuner lands.
    - `body:has(> #camtune…)` is `body:has(#camtune…)`: mountCamTuner(el) puts
@@ -18,7 +19,9 @@
    HOW WIDE THE DOCK IS, published once. It is 0 when no panel is docked, so
    the free-cam layout falls back to the full-width arrangement with no extra rule. */
 :root { --dock-w: 0px; --dock-px: 0px; }
-body:has(#camtune:not([hidden])) {
+body:has(#camtune:not([hidden])),
+body:has(#flyby:not([hidden])),
+body:has(#freecam:not([hidden])) {
   /* `88 * --vwz`, NOT `88vw`: this value is in the panel's own ZOOMED local
      space, and a bare viewport unit resolves against the UNZOOMED viewport and
      is then multiplied by the zoom. */
@@ -31,12 +34,12 @@ body:has(#camtune:not([hidden])) {
      --dock-w, to position anything against the dock. */
   --dock-px: calc((var(--dock-w) + 8px + var(--sar)) * var(--ui-scale));
 }
-#camtune-inner { --fit-at: 200px; }
+#camtune-inner, #flyby-inner, #freecam-inner { --fit-at: 200px; }
 
 /* Docked to the RIGHT edge with no backdrop: the game keeps rendering while the
    panel is open, so the left of the screen is the live preview. */
-#camtune { position: fixed; top: 0; right: 0; bottom: 0; z-index: 42; pointer-events: none; }
-#camtune-inner {
+#camtune, #flyby, #freecam { position: fixed; top: 0; right: 0; bottom: 0; z-index: 42; pointer-events: none; }
+#camtune-inner, #flyby-inner, #freecam-inner {
   /* Docked, not centred: .sheet gives the head/body/foot shape and the query
      container, and these override the sheet's centred sizing. */
   pointer-events: auto;
@@ -66,21 +69,21 @@ body:has(#camtune:not([hidden])) {
 }
 /* The rail is a grouping element for ONE layout (the wide-and-short block).
    Everywhere else it must not exist as a box at all. */
-#ct-rail { display: contents; }
+#ct-rail, #fb-rail { display: contents; }
 
 /* min-height must be a real floor, not 0: #ct-rows is the ONLY item that can
    give. padding-right buys the scroll indicator its own lane. */
-#ct-rows {
+#ct-rows, #fb-rows, #fc-rows {
   flex: 1 1 auto; overflow-y: auto; overscroll-behavior-y: contain;
   min-height: max(84px, calc(44px / var(--ui-scale)));
   touch-action: pan-y;
   padding-right: 10px;
 }
-#ct-rows.sf-scroll::before { margin-right: -8px; }
+#ct-rows.sf-scroll::before, #fb-rows.sf-scroll::before { margin-right: -8px; }
 /* The COPY FROM dropdown: same tap floor the sheets use. */
-:is(#ct-rows, #ct-copyrow) select { min-height: var(--tap-min); }
-#ct-json { flex-shrink: 0; }
-#camtune-inner .adv-item { margin: 7px 0; }
+:is(#ct-rows, #fb-rows, #fc-rows, #ct-copyrow) select { min-height: var(--tap-min); }
+#ct-json, #fb-json { flex-shrink: 0; }
+#camtune-inner .adv-item, #flyby-inner .adv-item { margin: 7px 0; }
 #camtune-inner .adv-help { display: none; }        /* hidden unless "Show explanations" is on… */
 #camtune-inner.lt-show-help .adv-help { display: block; }   /* …then every row explains itself */
 /* The whole label is the switch, so the LABEL is the tap target: min-height
@@ -102,7 +105,7 @@ body:has(#camtune:not([hidden])) {
   border-bottom: 1px solid var(--card-line);
   flex-shrink: 0;
 }
-#ct-modes .lt-tab {
+#ct-modes .lt-tab, #fb-shots .lt-tab {
   /* --tap-paint on touch (52 painted px); desktop keeps --tap-min via tokens. */
   min-height: var(--tap-paint);
   display: inline-flex; align-items: center; justify-content: center;
@@ -117,15 +120,15 @@ body:has(#camtune:not([hidden])) {
   white-space: normal; text-align: center; line-height: 1.15;
 }
 @media (hover: hover) and (pointer: fine) {
-  #ct-modes .lt-tab:hover { color: var(--text); }
+  #ct-modes .lt-tab:hover, #fb-shots .lt-tab:hover { color: var(--text); }
 }
-#ct-modes .lt-tab:active { color: var(--text); }
-#ct-modes .lt-tab.active {
+#ct-modes .lt-tab:active, #fb-shots .lt-tab:active { color: var(--text); }
+#ct-modes .lt-tab.active, #fb-shots .lt-tab.active {
   background: var(--plate-on); border-color: var(--red); color: var(--text);
 }
 /* panel header: title on one line */
-#ct-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: calc(var(--gap) / 3); }
-#ct-head h2 { margin: 0; }
+#ct-head, #fb-head, #fc-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: calc(var(--gap) / 3); }
+#ct-head h2, #fb-head h2, #fc-head h2 { margin: 0; }
 /* one compact line each — small inline label + tight chips */
 .lt-preview-row { display: flex; flex-wrap: wrap; align-items: center; gap: calc(var(--gap) / 3); margin: calc(var(--gap) * 0.25) 0; }
 .lt-preview-lbl { flex: 0 0 auto; width: 56px; font-size: var(--fs-micro); font-weight: 800; letter-spacing: var(--ls-4); color: var(--dim); }
@@ -138,11 +141,13 @@ body:has(#camtune:not([hidden])) {
 }
 /* No border-top here. The shared .sheet-foot draws its rule as a gradient
    ::before (src/styles/components.css). */
-#camtune-inner .sheet-foot {
+#camtune-inner .sheet-foot, #flyby-inner .sheet-foot, #freecam-inner .sheet-foot {
   display: flex; gap: calc(var(--gap) * 2 / 3); flex-shrink: 0;
   margin-top: 10px; padding-top: 10px;
 }
-#camtune-inner .sheet-foot button {
+#camtune-inner .sheet-foot button,
+#flyby-inner .sheet-foot button,
+#freecam-inner .sheet-foot button {
   margin: 0;
   min-height: var(--tap-min);
 }
@@ -156,7 +161,7 @@ body:has(#camtune:not([hidden])) {
    way to see at a glance which you have already tuned. */
 #ct-modes .lt-tab.tuned { border-color: var(--red); color: var(--text); }
 #ct-modes .lt-tab.tuned.active { border-color: var(--red); }
-#ct-json {
+#ct-json, #fb-json {
   /* field-sizing lets the export box grow to whatever COPY VALUES produced
      instead of scrolling inside a fixed 72px. Local `--svhz`, not `svh`: this
      box lives inside `zoom: var(--ui-scale)`. */
