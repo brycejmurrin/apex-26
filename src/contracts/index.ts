@@ -6,3 +6,4 @@ export type * from "./track";
 export type * from "./sim";
 export type * from "./render";
 export type * from "./scenery";
+export type * from "./race";
