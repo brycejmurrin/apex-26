@@ -69,7 +69,13 @@ export class App {
     this.hud = opts.hudParent ? new Hud(opts.hudParent) : null;
   }
 
-  /** Advance the sim one fixed step (also the debug API's `step`). */
+  /** One fixed step outside the frame loop (debug API): snapshot, then step. */
+  stepOnce(): void {
+    this.snapshot();
+    this.step(FIXED_DT);
+  }
+
+  /** Advance the sim one fixed step. */
   step(dt = FIXED_DT): void {
     const inp = this.input.sample(dt);
     this.lastInput = inp;
