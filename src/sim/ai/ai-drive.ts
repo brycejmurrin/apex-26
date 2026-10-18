@@ -69,16 +69,16 @@ export interface TeamStats {
   readonly braking: number;
 }
 export interface TeamRef {
-  readonly id?: string;
-  readonly stats?: TeamStats | null;
+  readonly id?: string | undefined;
+  readonly stats?: TeamStats | null | undefined;
 }
 /** A car as the team-orders rules see "the other car". */
 export interface OtherCar {
   readonly team?: TeamRef | null | undefined;
   readonly seat?: number | null | undefined;
-  readonly human?: boolean;
+  readonly human?: boolean | undefined;
   readonly _snapX?: number | undefined;
-  readonly x?: number;
+  readonly x?: number | undefined;
 }
 const _house = { attack: 0, hold: 0 };
 export function houseStyle(team: TeamRef | null | undefined, seat: number | null | undefined, stats: TeamStats | null | undefined): { attack: number; hold: number } {
@@ -228,14 +228,14 @@ export function pairEdgeN(
   return Math.max(a, b);
 }
 export interface HungerCtx {
-  readonly street?: boolean;
-  readonly traits?: Traits | null;
-  readonly vTop?: number;
-  readonly queueT?: number;
-  readonly blockerVmax?: number;
-  readonly ourVmax?: number;
-  readonly blockerPace?: number;
-  readonly ourPace?: number;
+  readonly street?: boolean | undefined;
+  readonly traits?: Traits | null | undefined;
+  readonly vTop?: number | undefined;
+  readonly queueT?: number | undefined;
+  readonly blockerVmax?: number | undefined;
+  readonly ourVmax?: number | undefined;
+  readonly blockerPace?: number | undefined;
+  readonly ourPace?: number | undefined;
 }
 export function passHunger(ctx: HungerCtx | null | undefined): number {
   if (!ctx || ctx.street) return 1;
@@ -246,14 +246,14 @@ export function passHunger(ctx: HungerCtx | null | undefined): number {
   return 1 + edgeN * Math.max(stuckN, 0.25) * 1.15 * craft;
 }
 export interface ConcedeCtx {
-  readonly street?: boolean;
-  readonly other?: OtherCar | null;
-  readonly traits?: Partial<Traits> | null;
-  readonly vTop?: number;
-  readonly chaserVmax?: number;
-  readonly ourVmax?: number;
-  readonly chaserPace?: number;
-  readonly ourPace?: number;
+  readonly street?: boolean | undefined;
+  readonly other?: OtherCar | null | undefined;
+  readonly traits?: Partial<Traits> | null | undefined;
+  readonly vTop?: number | undefined;
+  readonly chaserVmax?: number | undefined;
+  readonly ourVmax?: number | undefined;
+  readonly chaserPace?: number | undefined;
+  readonly ourPace?: number | undefined;
 }
 export function coverConcede(ctx: ConcedeCtx | null | undefined): number {
   if (!ctx || ctx.street) return 0;
@@ -351,16 +351,16 @@ export function streetOtScale(t: Traits): number {
 // ── overtake fire / ERS / X-mode (ai-drive.js:383-456) ──────────────────────
 export interface OtFireCtx extends HouseCtx {
   traits: Traits;
-  blockerGap?: number | null;
-  gapAhead?: number;
-  roomL?: number;
-  roomR?: number;
-  speed?: number;
-  aheadSpeed?: number | null;
-  vTop?: number;
-  kAhead?: number;
-  street?: boolean;
-  other?: OtherCar | null;
+  blockerGap?: number | null | undefined;
+  gapAhead?: number | undefined;
+  roomL?: number | undefined;
+  roomR?: number | undefined;
+  speed?: number | undefined;
+  aheadSpeed?: number | null | undefined;
+  vTop?: number | undefined;
+  kAhead?: number | undefined;
+  street?: boolean | undefined;
+  other?: OtherCar | null | undefined;
 }
 export function otFireRate(ctx: OtFireCtx): number {
   const t = ctx.traits;
@@ -387,24 +387,24 @@ export function otShouldFire(roll: number, dt: number, ctx: OtFireCtx): boolean 
 }
 export interface BoostCtx extends HouseCtx {
   traits: Traits;
-  energy?: number;
-  otActive?: boolean;
-  kAhead60?: number;
-  towCar?: boolean;
-  towGap?: number;
-  towSpeed?: number;
-  speed?: number;
-  chaser?: boolean;
-  chaserGap?: number;
-  chaserSpeed?: number;
-  ersDeploy?: number | null;
-  ersRegen?: number | null;
-  vTop?: number;
-  street?: boolean;
-  towVmax?: number;
-  ourVmax?: number;
-  ourPace?: number;
-  towPace?: number;
+  energy?: number | undefined;
+  otActive?: boolean | undefined;
+  kAhead60?: number | undefined;
+  towCar?: boolean | undefined;
+  towGap?: number | undefined;
+  towSpeed?: number | undefined;
+  speed?: number | undefined;
+  chaser?: boolean | undefined;
+  chaserGap?: number | undefined;
+  chaserSpeed?: number | undefined;
+  ersDeploy?: number | null | undefined;
+  ersRegen?: number | null | undefined;
+  vTop?: number | undefined;
+  street?: boolean | undefined;
+  towVmax?: number | undefined;
+  ourVmax?: number | undefined;
+  ourPace?: number | undefined;
+  towPace?: number | undefined;
 }
 export function wantBoost(ctx: BoostCtx): boolean {
   const energy = ctx.energy || 0;
@@ -428,10 +428,10 @@ export function wantBoost(ctx: BoostCtx): boolean {
   return desperate || defending || rich || (energy > 0.25 && straight && ctx.traits.awareness < 0.55);
 }
 export interface WantXCtx extends HouseCtx {
-  armed?: boolean;
-  catching?: boolean;
-  otActive?: boolean;
-  energy?: number | null;
+  armed?: boolean | undefined;
+  catching?: boolean | undefined;
+  otActive?: boolean | undefined;
+  energy?: number | null | undefined;
 }
 export function wantX(ctx: WantXCtx | null | undefined): boolean {
   if (ctx && ctx.armed === false) return false;
@@ -470,20 +470,20 @@ function cornerSpeedEnvelope(kk: number, L: number, V: number, vSq: number): num
 export interface BrakeCtx extends HouseCtx {
   traits: Traits;
   samples: readonly LookSample[] | null;
-  latMax?: number;
-  diffCorner?: number;
+  latMax?: number | undefined;
+  diffCorner?: number | undefined;
   aeroLoad?: number | null | undefined;
-  brake?: number;
-  pace?: number;
-  vmax?: number;
-  grip?: number;
-  speed?: number;
-  blocker?: boolean;
-  blockerGap?: number;
-  blockerSpeed?: number;
-  roomL?: number;
-  roomR?: number;
-  errMul?: number;
+  brake?: number | undefined;
+  pace?: number | undefined;
+  vmax?: number | undefined;
+  grip?: number | undefined;
+  speed?: number | undefined;
+  blocker?: boolean | undefined;
+  blockerGap?: number | undefined;
+  blockerSpeed?: number | undefined;
+  roomL?: number | undefined;
+  roomR?: number | undefined;
+  errMul?: number | undefined;
 }
 const _bind = { vC: 0, d: 1 };
 export function brakeTarget(ctx: BrakeCtx): number {
@@ -574,12 +574,12 @@ export function brakeDecision(ctx: BrakeCtx): BrakeDecision {
 // ── lanes, overtaking, the pass latch (ai-drive.js:596-760) ─────────────────
 export interface LaneCtx {
   traits: Traits;
-  nearby?: number;
-  roomL?: number;
-  roomR?: number;
-  street?: boolean;
-  baseLane?: number | null;
-  queueT?: number;
+  nearby?: number | undefined;
+  roomL?: number | undefined;
+  roomR?: number | undefined;
+  street?: boolean | undefined;
+  baseLane?: number | null | undefined;
+  queueT?: number | undefined;
 }
 export function adaptLane(lane: number, ctx: LaneCtx, dt: number): number {
   const dens = ctx.nearby || 0;
@@ -598,31 +598,31 @@ export function adaptLane(lane: number, ctx: LaneCtx, dt: number): number {
 
 /** game.js `_aiOtPull` (:4664): the pull / want / attack / latch context. */
 export interface OtPullCtx extends HouseCtx {
-  street?: boolean;
+  street?: boolean | undefined;
   traits: Traits;
-  speed?: number;
-  blockerSpeed?: number;
+  speed?: number | undefined;
+  blockerSpeed?: number | undefined;
   blockerGap: number;
-  roomL?: number;
-  roomR?: number;
-  roadL?: number;
-  roadR?: number;
-  other?: OtherCar | null;
-  kAhead?: number;
-  lane?: number;
-  freeSpeed?: number;
-  blockerVmax?: number;
-  vTop?: number;
-  blockerAccel?: number;
-  attackQ?: number;
-  toTurnIn?: number;
-  kTurn?: number;
-  calm?: number;
-  roll?: number | null;
-  queueT?: number;
-  ourVmax?: number;
-  ourPace?: number;
-  blockerPace?: number;
+  roomL?: number | undefined;
+  roomR?: number | undefined;
+  roadL?: number | undefined;
+  roadR?: number | undefined;
+  other?: OtherCar | null | undefined;
+  kAhead?: number | undefined;
+  lane?: number | undefined;
+  freeSpeed?: number | undefined;
+  blockerVmax?: number | undefined;
+  vTop?: number | undefined;
+  blockerAccel?: number | undefined;
+  attackQ?: number | undefined;
+  toTurnIn?: number | undefined;
+  kTurn?: number | undefined;
+  calm?: number | undefined;
+  roll?: number | null | undefined;
+  queueT?: number | undefined;
+  ourVmax?: number | undefined;
+  ourPace?: number | undefined;
+  blockerPace?: number | undefined;
 }
 export function otPull(ctx: OtPullCtx): number {
   const street = !!ctx.street;
@@ -746,14 +746,14 @@ export function cornerK(k1: number, k2: number, k3: number): number {
   return k;
 }
 export interface SbsCtx {
-  street?: boolean;
+  street?: boolean | undefined;
   traits: Traits;
-  vTop?: number;
-  other?: OtherCar | null;
-  ourVmax?: number;
-  ourPace?: number;
-  otherVmax?: number;
-  otherPace?: number;
+  vTop?: number | undefined;
+  other?: OtherCar | null | undefined;
+  ourVmax?: number | undefined;
+  ourPace?: number | undefined;
+  otherVmax?: number | undefined;
+  otherPace?: number | undefined;
 }
 export function sbsCommitT(ctx: SbsCtx | null | undefined): number {
   if (ctx && !ctx.street) {
@@ -822,7 +822,7 @@ export function queuePatience(t: Traits | null | undefined): number {
   const aggr = clamp(t && t.aggression != null ? t.aggression : 0, -1, 1);
   return lerp(7, 3.5, t ? t.craft : 0.75) * lerp(1.12, 0.88, (aggr + 1) * 0.5);
 }
-export function queuePress(ctx: { queueT?: number; traits?: Traits | null }): number {
+export function queuePress(ctx: { queueT?: number | undefined; traits?: Traits | null | undefined }): number {
   return clamp((ctx.queueT || 0) / queuePatience(ctx.traits), 0, 1);
 }
 export function sideLevel(): number {
@@ -923,28 +923,28 @@ export function defendWindowT(t: Traits | null | undefined): number {
 }
 /** game.js `_aiDefend` (:4665). */
 export interface DefendCtx extends HouseCtx {
-  street?: boolean;
+  street?: boolean | undefined;
   traits: Traits;
-  speed?: number;
-  chaser?: boolean;
-  chaserGap?: number | null;
-  chaserSpeed?: number;
-  kA?: number;
-  roomL?: number;
-  roomR?: number;
-  other?: OtherCar | null;
-  blocker?: unknown;
-  blockerGap?: number;
-  kTurn?: number;
-  toTurnIn?: number;
-  roadL?: number | null;
-  roadR?: number | null;
-  x?: number;
-  vTop?: number;
-  chaserVmax?: number;
-  ourVmax?: number;
-  chaserPace?: number;
-  ourPace?: number;
+  speed?: number | undefined;
+  chaser?: boolean | undefined;
+  chaserGap?: number | null | undefined;
+  chaserSpeed?: number | undefined;
+  kA?: number | undefined;
+  roomL?: number | undefined;
+  roomR?: number | undefined;
+  other?: OtherCar | null | undefined;
+  blocker?: unknown | undefined;
+  blockerGap?: number | undefined;
+  kTurn?: number | undefined;
+  toTurnIn?: number | undefined;
+  roadL?: number | null | undefined;
+  roadR?: number | null | undefined;
+  x?: number | undefined;
+  vTop?: number | undefined;
+  chaserVmax?: number | undefined;
+  ourVmax?: number | undefined;
+  chaserPace?: number | undefined;
+  ourPace?: number | undefined;
 }
 export function defendPull(ctx: DefendCtx): number {
   if (!ctx.chaser || (ctx.blocker && (ctx.street || !((ctx.chaserGap as number) < (ctx.blockerGap as number))))) return 0;
@@ -986,12 +986,12 @@ export function defendPull(ctx: DefendCtx): number {
 
 // ── boxed, dig-out, rescue (ai-drive.js:1616-1667) ──────────────────────────
 export interface BoxedCtx {
-  contactT?: number;
-  roomL?: number;
-  roomR?: number;
-  blocker?: unknown;
-  blockerGap?: number;
-  street?: boolean;
+  contactT?: number | undefined;
+  roomL?: number | undefined;
+  roomR?: number | undefined;
+  blocker?: unknown | undefined;
+  blockerGap?: number | undefined;
+  street?: boolean | undefined;
 }
 export function isBoxed(ctx: BoxedCtx): boolean {
   const roomL = ctx.roomL || 0,
@@ -1018,7 +1018,7 @@ export function aiRescueDelay(contacting: boolean, escalated: boolean): number {
 }
 
 // ── pass side, let pass (ai-drive.js:1669-1718) ─────────────────────────────
-export function otSide(ctx: { roomL?: number; roomR?: number; kTurn?: number; kAhead?: number; lane?: number }): 1 | -1 {
+export function otSide(ctx: { roomL?: number | undefined; roomR?: number | undefined; kTurn?: number | undefined; kAhead?: number | undefined; lane?: number | undefined }): 1 | -1 {
   const roomL = ctx.roomL || 0,
     roomR = ctx.roomR || 0;
   const diff = roomR - roomL;

@@ -62,7 +62,7 @@ export function encode(value) {
 }
 
 export function writeGolden(name, value) {
-  const out = path.join(ROOT, "tests", "goldens", name);
+  const out = path.join(process.env.ORACLE_OUT ? path.resolve(process.env.ORACLE_OUT) : path.join(ROOT, "tests", "goldens"), name);
   fs.mkdirSync(path.dirname(out), { recursive: true });
   const text = encode(value) + "\n";
   fs.writeFileSync(out, name.endsWith(".gz") ? zlib.gzipSync(text, { level: 9 }) : text);
