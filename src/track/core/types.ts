@@ -33,6 +33,8 @@ export interface GeomOut {
   col: number[];
   idx: number[];
   mat?: number[];
+  /** The road's track-space (s, x, hw) stream per vertex (mesh.js buildRoad). */
+  trk?: number[];
   _mat?: number;
   _matAt?: MatAt | null;
   /** Upload hints set by tracks.js buildSteps; inert in the port. */
