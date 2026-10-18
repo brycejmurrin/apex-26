@@ -8,6 +8,13 @@
       html, body { margin: 0; height: 100%; background: #0b0d12; color: #e8eaf0; font: 14px/1.4 system-ui, sans-serif; overflow: hidden; }
       #game { display: block; width: 100vw; height: 100vh; }
       #backend { position: fixed; top: 8px; left: 8px; padding: 2px 8px; border-radius: 4px; background: rgb(0 0 0 / 0.5); }
+      #hud { position: fixed; inset: auto 16px 16px auto; display: flex; gap: 16px; align-items: flex-end; padding: 8px 12px; border-radius: 8px; background: rgb(0 0 0 / 0.55); font-variant-numeric: tabular-nums; pointer-events: none; }
+      #hud .hud-spd { font-size: 40px; font-weight: 700; line-height: 1; }
+      #hud .hud-spd small { font-size: 12px; margin-left: 4px; opacity: 0.7; }
+      #hud .hud-gear { font-size: 40px; font-weight: 700; line-height: 1; min-width: 1ch; text-align: center; color: #ffd84a; }
+      #hud .hud-times { display: grid; grid-template-columns: auto 8ch; gap: 0 8px; margin: 0; font-size: 14px; }
+      #hud .hud-times dt { opacity: 0.6; }
+      #hud .hud-times dd { margin: 0; text-align: right; }
     </style>
   </head>
   <body>
