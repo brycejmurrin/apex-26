@@ -15,12 +15,17 @@ import type { TrackQuery, TrackSample } from "../contracts/track";
 import { ChaseCam } from "../camera/chase";
 import { Input } from "../input/input";
 import { FIXED_DT, FixedStepLoop, lerp, lerpAngle, type FrameResult } from "../sim/loop";
+import { Hud, type HudState } from "../hud/hud";
+import { dashKph } from "../hud/readouts";
 import { FlatLoop } from "./flat-loop";
+import { LapTimer } from "./lap-timer";
 import { makePlaceholderCar, placeCar, stepPlaceholder } from "./placeholder-body";
 
 export interface AppOptions {
   readonly renderer: THREE.WebGPURenderer;
   readonly canvas: HTMLCanvasElement;
+  /** Where the HUD mounts; omit for a headless app. */
+  readonly hudParent?: HTMLElement;
 }
 
 /** Interpolation snapshot of the player before the last step (game.js:8432-8436 `rPrev*`). */
@@ -30,6 +35,8 @@ export class App {
   readonly track: TrackQuery;
   readonly player: CarState;
   readonly input = new Input();
+  readonly timer = new LapTimer();
+  readonly hud: Hud | null;
   readonly loop: FixedStepLoop;
   readonly scene = new THREE.Scene();
   readonly camera = new THREE.PerspectiveCamera(60, 1, 0.1, 4000);
@@ -59,13 +66,23 @@ export class App {
     });
     this.snapshot();
     this.carMesh = buildScene(this.scene, this.track);
+    this.hud = opts.hudParent ? new Hud(opts.hudParent) : null;
   }
 
-  /** Advance the sim one fixed step (also the debug API's `step`). */
+  /** One fixed step outside the frame loop (debug API): snapshot, then step. */
+  stepOnce(): void {
+    this.snapshot();
+    this.step(FIXED_DT);
+  }
+
+  /** Advance the sim one fixed step. */
   step(dt = FIXED_DT): void {
     const inp = this.input.sample(dt);
     this.lastInput = inp;
-    stepPlaceholder(this.player, inp, this.track, dt);
+    const crossed = stepPlaceholder(this.player, inp, this.track, dt);
+    this.timer.step(dt, crossed);
+    this.player.lap = this.timer.lap;
+    this.player.lapTime = this.timer.lapTime;
     this.simT += dt;
     this.stepCount++;
   }
@@ -83,6 +100,12 @@ export class App {
     const f = this.loop.frame(now, !this.paused);
     this.lastFrame = f;
     this.render(f.alpha, Math.min(f.dt, 1 / 20));
+    this.hud?.update(this.hudState(), now);
+  }
+
+  hudState(): HudState {
+    const c = this.player, t = this.timer;
+    return { kph: Math.max(0, dashKph(c.speed)), gear: c.gear, lap: t.lap, laps: 0, lapTime: t.lapTime, last: t.last, best: t.best };
   }
 
   private render(alpha: number, dt: number): void {

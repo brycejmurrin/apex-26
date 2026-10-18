@@ -1,5 +1,6 @@
 import { createRenderer } from "./render/boot";
 import { App } from "./app/app";
+import { createDebugApi } from "./debug/api";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game")!;
 const label = document.querySelector<HTMLElement>("#backend")!;
@@ -12,8 +13,9 @@ label.textContent = `${backend} (${reason})`;
 label.dataset.backend = backend;
 label.dataset.reason = reason;
 
-const app = new App({ renderer, canvas });
+const app = new App({ renderer, canvas, hudParent: document.body });
 app.input.attach(window);
+window.__apex = createDebugApi(app, { name: backend, reason }, "flat-loop");
 app.resize(window.innerWidth, window.innerHeight);
 
 window.addEventListener("resize", () => {
