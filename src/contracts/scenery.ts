@@ -16,17 +16,73 @@
  *   the inner face's distance beyond the edge.
  * - `s`, `s0`, `s1` on range helpers are LAP FRACTIONS 0..1, not metres.
  *
- * Option bags whose keys f1-game documents but this contract has not yet
- * typed from their implementations are `SceneryOpts` (an open record).
- * TODO(Phase 3 scenery codemod): tighten each `SceneryOpts` from its emitter.
+ * Emitter option bags are typed from their implementations (./scenery-opts.ts).
+ * The few still open (`waterSurface`, `groundPatch`, `addMountain`, …) are
+ * `SceneryOpts`, an open record.
+ * Vectors and bases are ACCEPTED as plain arrays (`VecIn`, `BasisIn`), as
+ * f1-game passes them; results stay tuples.
  */
 import type { Vec3 } from "./track";
+import type { SceneryCore } from "../track/scenery/core";
+import type {
+  AcaciaOpts,
+  BankedKerbStripOpts,
+  BillboardOpts,
+  BleacherOpts,
+  BowlSeatWallOpts,
+  BroadcastCompoundOpts,
+  BroadleafFallOpts,
+  BuildingOpts,
+  BushOpts,
+  CameraTowerOpts,
+  CityFrontOpts,
+  CityTowerOpts,
+  ConcreteCanyonOpts,
+  CypressOpts,
+  FenceOpts,
+  FloodMastOpts,
+  FloodMastRingOpts,
+  ForestEdgeOpts,
+  GantryOpts,
+  GrandstandOpts,
+  GridshellCanopyOpts,
+  GuardrailOpts,
+  HouseOpts,
+  LedFacadeBandsOpts,
+  MarshalPostOpts,
+  MotorhomeOpts,
+  MountainOpts,
+  PastelStreetRowOpts,
+  PineOpts,
+  PlaneOpts,
+  RidgeOpts,
+  SailCanopyOpts,
+  ScaffoldStandOpts,
+  SpectatorHillOpts,
+  SponsorHoardingOpts,
+  StonePineOpts,
+  TerraceOpts,
+  TieredBowlOpts,
+  TreeOpts,
+  TyreWallOpts,
+  UnderpassPortalOpts,
+} from "./scenery-opts";
 
 /** A read-only 3-vector (colour RGB 0..1, or a world point/direction). */
 export type RVec3 = readonly [number, number, number];
 
 /** An oriented basis `[right, up, forward]`. f1-game geom.js:112 "basis optional [right,up,fwd]". */
 export type Basis = readonly [RVec3, RVec3, RVec3];
+
+/**
+ * A vector as emitters ACCEPT it. f1-game passes plain arrays everywhere
+ * (`[0.56, 0.40, 0.32]`, `[a.r, a.u, a.t]`), so input parameters take any
+ * numeric array; results (`Vec3`, `SceneryAnchor`, `SceneryFrame`) stay tuples.
+ */
+export type VecIn = readonly number[];
+
+/** A basis as emitters accept it; `null` is f1-game's "no basis" (23 closure call sites pass it). */
+export type BasisIn = readonly VecIn[] | null;
 
 /**
  * An open option bag. TODO(Phase 3): replace each use with an interface typed
@@ -55,6 +111,8 @@ export interface SceneryBuffer {
   readonly idx: Accum;
   /** Material id stamped on the next emitted vertices (`MAT` value). */
   _mat: number;
+  /** Per-vertex material hook (wind-sway weight): f1-game geom.js `emit` reads `out._matAt`; nature/graph set it. */
+  _matAt?: ((x: number, y: number, z: number) => number) | null;
 }
 
 /**
@@ -94,6 +152,9 @@ export interface SceneryDef {
   readonly id: string;
   readonly palette: SceneryPalette;
   readonly theme?: string;
+  /** build-props.js:686-691: SceneryThemes.resolve(def.sceneryTheme, def.sceneryThemeOverrides). */
+  readonly sceneryTheme?: string;
+  readonly sceneryThemeOverrides?: unknown;
   readonly _sceneryShift?: number;
   readonly startFrac?: number;
   readonly sceneryStartFrac?: number;
@@ -205,6 +266,8 @@ export interface ModelGroupOpts {
   readonly required?: boolean;
   readonly kind?: string;
   readonly trial?: boolean;
+  /** models.js:244: per-group vertex cap (circuit-kit and venue pass it). */
+  readonly maxVertices?: number;
 }
 
 /** `overheadSpan` spec: the keys models.js:300-330 reads, plus any the emitter reads later. */
@@ -222,6 +285,11 @@ export type OverheadSpanSpec = {
   readonly offset?: number;
   readonly startLights?: boolean;
   readonly required?: boolean;
+  /** models.js:324-381. */
+  readonly soffit?: boolean | SceneryOpts;
+  readonly soffitColor?: RVec3;
+  readonly color?: RVec3;
+  readonly supportColor?: RVec3;
 } & SceneryOpts;
 
 /** `lampPost` spec: `pos` is required (build-props.js:1886-1894); the rest go to `lampRec`. */
@@ -234,6 +302,9 @@ export interface ModelDiagnostics {
   readonly suppressed: unknown[];
   readonly invalid: unknown[];
   readonly unsafe: unknown[];
+  /** Created on demand by models.js. */
+  readonly escaped?: unknown[];
+  readonly clamped?: unknown[];
   readonly suppressedCounts: { readonly [kind: string]: number };
   readonly supersededByPit: { readonly [kind: string]: number };
 }
@@ -276,11 +347,11 @@ export interface CircuitKit {
 
 /** `seat.*`: primitives placed by their FOOT, not their centre. build-props.js:726-732. */
 export interface SeatKit {
-  box(o: SceneryBuffer, foot: RVec3, sz: RVec3, col: RVec3, basis?: Basis): boolean;
-  prism(o: SceneryBuffer, foot: RVec3, sz: RVec3, col: RVec3, basis?: Basis): boolean;
-  cyl(o: SceneryBuffer, foot: RVec3, rad: number, h: number, col: RVec3, seg?: number, basis?: Basis): boolean;
-  cone(o: SceneryBuffer, foot: RVec3, rad: number, h: number, col: RVec3, seg?: number, basis?: Basis): boolean;
-  frustum(o: SceneryBuffer, foot: RVec3, r0: number, r1: number, h: number, col: RVec3, seg?: number, basis?: Basis): boolean;
+  box(o: SceneryBuffer, foot: VecIn, sz: VecIn, col: VecIn, basis?: BasisIn): boolean;
+  prism(o: SceneryBuffer, foot: VecIn, sz: VecIn, col: VecIn, basis?: BasisIn): boolean;
+  cyl(o: SceneryBuffer, foot: VecIn, rad: number, h: number, col: VecIn, seg?: number, basis?: BasisIn): boolean;
+  cone(o: SceneryBuffer, foot: VecIn, rad: number, h: number, col: VecIn, seg?: number, basis?: BasisIn): boolean;
+  frustum(o: SceneryBuffer, foot: VecIn, r0: number, r1: number, h: number, col: VecIn, seg?: number, basis?: BasisIn): boolean;
 }
 
 /**
@@ -315,7 +386,7 @@ export interface SceneryApi {
   readonly MAT: { readonly [M in MatName]: number };
   readonly ATM: { readonly [P in AtmPackName]: AtmPack };
   /** data.js:174-178. */
-  readonly COL: { readonly aquaRunoff: RVec3; readonly basinTeal: RVec3; readonly desertSand: RVec3 };
+  readonly COL: { readonly aquaRunoff: VecIn; readonly basinTeal: VecIn; readonly desertSand: VecIn };
   readonly sceneryTheme: SceneryTheme | null;
   readonly landmarkKit: LandmarkKit | null;
   readonly circuitKit: CircuitKit | null;
@@ -338,10 +409,10 @@ export interface SceneryApi {
   every(metres: number, fn: (k: number) => void): void;
 
   // ── Placement helpers (build-props.js:1175-1290) ─────────────────────────
-  place(k: number, side: number, dist: number, sz: RVec3, col: RVec3, deeper?: number): PlaceResult | undefined;
-  prop(k: number, side: number, gap: number, sz: RVec3, col: RVec3): PlaceResult | undefined;
-  backdrop(k: number, side: number, dist: number, sz: RVec3, col: RVec3): void;
-  groundPlane(k: number, side: number, gap: number, sz: RVec3, col: RVec3, water?: boolean): boolean;
+  place(k: number, side: number, dist: number, sz: VecIn, col: VecIn, deeper?: number): PlaceResult | undefined;
+  prop(k: number, side: number, gap: number, sz: VecIn, col: VecIn): PlaceResult | undefined;
+  backdrop(k: number, side: number, dist: number, sz: VecIn, col: VecIn): void;
+  groundPlane(k: number, side: number, gap: number, sz: VecIn, col: VecIn, water?: boolean): boolean;
   /** Book a footprint so later foliage routes around it. build-props.js:949. */
   indexSolid(s0: number, s1: number, side: number, gap: number, width: number): void;
   /** Register a barrier face (tightens driving limits). build-props.js:940. */
@@ -349,139 +420,149 @@ export interface SceneryApi {
   bakedModel(id: string, k: number, side: number, dist: number, opts?: BakedModelOpts): boolean;
 
   // ── Guarded primitives: false = dropped (on the road or invalid). build-props.js:472-549 ──
-  addBox(o: SceneryBuffer, c: RVec3, sz: RVec3, col: RVec3, basis?: Basis): boolean;
-  addPrism(o: SceneryBuffer, c: RVec3, sz: RVec3, col: RVec3, basis?: Basis): boolean;
-  addPyramid(o: SceneryBuffer, c: RVec3, sz: RVec3, col: RVec3, basis?: Basis): boolean;
-  addCone(o: SceneryBuffer, c: RVec3, rad: number, h: number, col: RVec3, seg?: number, basis?: Basis): boolean;
-  addCyl(o: SceneryBuffer, c: RVec3, rad: number, h: number, col: RVec3, seg?: number, basis?: Basis): boolean;
-  addFrustum(o: SceneryBuffer, c: RVec3, rBase: number, rTop: number, h: number, col: RVec3, seg?: number, basis?: Basis): boolean;
+  addBox(o: SceneryBuffer, c: VecIn, sz: VecIn, col: VecIn, basis?: BasisIn): boolean;
+  addPrism(o: SceneryBuffer, c: VecIn, sz: VecIn, col: VecIn, basis?: BasisIn): boolean;
+  addPyramid(o: SceneryBuffer, c: VecIn, sz: VecIn, col: VecIn, basis?: BasisIn): boolean;
+  addCone(o: SceneryBuffer, c: VecIn, rad: number, h: number, col: VecIn, seg?: number, basis?: BasisIn): boolean;
+  addCyl(o: SceneryBuffer, c: VecIn, rad: number, h: number, col: VecIn, seg?: number, basis?: BasisIn): boolean;
+  addFrustum(o: SceneryBuffer, c: VecIn, rBase: number, rTop: number, h: number, col: VecIn, seg?: number, basis?: BasisIn): boolean;
   /** opts: seg, seed, rough, forest, rock, snow, snowline, lowMat, right, fwd, profile (geom.js:248). */
-  addMountain(o: SceneryBuffer, c: RVec3, baseR: number, h: number, opts?: SceneryOpts): boolean;
+  addMountain(o: SceneryBuffer, c: VecIn, baseR: number, h: number, opts?: SceneryOpts): boolean;
 
   // ── Grounding (build-props.js:726-775) ────────────────────────────────────
   readonly seat: SeatKit;
   foundation(o: SceneryBuffer, spec: FoundationSpec): boolean;
   cantilever(
-    o: SceneryBuffer, top: RVec3, outM: number, side: number,
-    headSz: RVec3, headCol: RVec3, armCol?: RVec3 | null, basis?: Basis,
+    o: SceneryBuffer, top: VecIn, outM: number, side: number,
+    headSz: VecIn, headCol: VecIn, armCol?: VecIn | null, basis?: BasisIn,
   ): void;
 
   // ── Math (geom.js:78-84 cross/norm, :185 vadd; mesh.js:26 upOf, :31 hash; core/mat4.js:6 lerp) ──
   hash(i: number): number;
   upOf(track: SceneryTrack, k: number): Vec3;
-  cross(a: RVec3, b: RVec3): Vec3;
-  norm(a: RVec3): Vec3;
+  cross(a: VecIn, b: VecIn): Vec3;
+  norm(a: VecIn): Vec3;
   lerp(a: number, b: number, t: number): number;
-  vadd(p: RVec3, v: RVec3, s: number): Vec3;
+  vadd(p: VecIn, v: VecIn, s: number): Vec3;
 
   // ── Atomic models (models.js) ────────────────────────────────────────────
   modelGroup(id: string, bounds: ModelBounds, emit: (stage: SceneryBuffer) => boolean | void, opts?: ModelGroupOpts): boolean;
   overheadSpan(spec: OverheadSpanSpec): boolean;
   lampPost(spec: LampPostSpec): boolean;
   /** build-props.js:774; opts: id, required. */
-  waterSurface(k: number, side: number, gap: number, sz: RVec3, col: RVec3, opts?: SceneryOpts): boolean;
+  waterSurface(k: number, side: number, gap: number, sz: VecIn, col: VecIn, opts?: SceneryOpts): boolean;
   /** Returns cells placed. build-props.js:871. */
-  waterField(k: number, side: number, gap0: number, gap1: number, halfLen: number, cell: number, col: RVec3, opts?: SceneryOpts): number;
+  waterField(k: number, side: number, gap0: number, gap1: number, halfLen: number, cell: number, col: VecIn, opts?: SceneryOpts): number;
   /** Returns cells placed. build-props.js:876. */
-  waterBand(s0: number, s1: number, side: number, gap0: number, gap1: number, cell: number, col: RVec3, opts?: SceneryOpts): number;
+  waterBand(s0: number, s1: number, side: number, gap0: number, gap1: number, cell: number, col: VecIn, opts?: SceneryOpts): number;
   /** opts: material, collision, samples, id (build-props.js:883). */
-  groundPatch(k: number, side: number, gap: number, sz: RVec3, col: RVec3, opts?: SceneryOpts): boolean;
+  groundPatch(k: number, side: number, gap: number, sz: VecIn, col: VecIn, opts?: SceneryOpts): boolean;
   /** spec: points (>= 2), height, width (models.js:536). */
   groundedSegments(spec: SceneryOpts): boolean;
   /** Terrain-fitted flat decal; sz = [depth, thick, len]. models.js:691. */
-  drape(k: number, side: number, gap: number, sz: RVec3, col: RVec3, opts?: DrapeOpts): void;
+  drape(k: number, side: number, gap: number, sz: VecIn, col: VecIn, opts?: DrapeOpts): void;
   /** models.js:767. */
-  drapeRun(s: number, side: number, gap: number, sz: RVec3, col: RVec3, res: number, span?: number, extra?: DrapeOpts): void;
+  drapeRun(s: number, side: number, gap: number, sz: VecIn, col: VecIn, res: number, span?: number, extra?: DrapeOpts): void;
 
   // ── Landscape and vegetation (nature.js) ─────────────────────────────────
-  pine(k: number, side: number, dist: number, h: number, col: RVec3, opts?: SceneryOpts): void;
+  pine(k: number, side: number, dist: number, h: number, col: VecIn, opts?: PineOpts | null): void;
   /** opts: crown ("lobed"), variant 0..2, deadChance. nature.js:391. */
-  tree(k: number, side: number, dist: number, h: number, col: RVec3, opts?: SceneryOpts): void;
-  palm(k: number, side: number, dist: number, h: number, frond: RVec3): void;
+  tree(k: number, side: number, dist: number, h: number, col: VecIn, opts?: TreeOpts | null): boolean | void;
+  palm(k: number, side: number, dist: number, h: number, frond?: VecIn | null): void;
   /** opts: form. nature.js:1530. */
-  bush(k: number, side: number, dist: number, col: RVec3, opts?: SceneryOpts): void;
-  hedge(s0: number, s1: number, side: number, gap: number, h: number, col: RVec3): void;
+  bush(k: number, side: number, dist: number, col: VecIn | null | undefined, opts?: BushOpts | null): void;
+  hedge(s0: number, s1: number, side: number, gap: number, h: number, col?: VecIn | null): void;
   /** Deferred to the foliage pass (nature.js:1466 -> forestEdgeNow :1467). opts: density, hMin, hMax, col, col2. */
-  forestEdge(s0: number, s1: number, side: number, gap: number, opts?: SceneryOpts): void;
-  conifer(k: number, side: number, dist: number, h: number, col: RVec3): void;
+  forestEdge(s0: number, s1: number, side: number, gap: number, opts?: ForestEdgeOpts | null): void;
+  conifer(k: number, side: number, dist: number, h: number, col: VecIn): void;
   /** opts: slim, trunkCol. */
-  cypress(k: number, side: number, dist: number, h: number, col: RVec3, opts?: SceneryOpts): void;
+  cypress(k: number, side: number, dist: number, h: number, col: VecIn, opts?: CypressOpts | null): void;
   /** opts: lean, spread, trunkCol. */
-  stonePine(k: number, side: number, dist: number, h: number, col: RVec3, opts?: SceneryOpts): void;
+  stonePine(k: number, side: number, dist: number, h: number, col: VecIn, opts?: StonePineOpts | null): void;
   /** opts: lobes, spread, barkCol. */
-  broadleafFall(k: number, side: number, dist: number, h: number, col: RVec3, opts?: SceneryOpts): void;
+  broadleafFall(k: number, side: number, dist: number, h: number, col: VecIn, opts?: BroadleafFallOpts | null): void;
   /** opts: spread, layers, barkCol. */
-  acacia(k: number, side: number, dist: number, h: number, col: RVec3, opts?: SceneryOpts): void;
+  acacia(k: number, side: number, dist: number, h: number, col: VecIn, opts?: AcaciaOpts | null): void;
   /** opts: stages, spread, trunkCol. */
-  plane(k: number, side: number, dist: number, h: number, col: RVec3, opts?: SceneryOpts): void;
-  peak(x: number, z: number, baseY: number, w: number, h: number, col: RVec3): void;
+  plane(k: number, side: number, dist: number, h: number, col: VecIn, opts?: PlaneOpts | null): void;
+  peak(x: number, z: number, baseY: number, w: number, h: number, col: VecIn): void;
   /** opts: profile ("massif"), stretch, crest. */
-  mountain(x: number, z: number, baseY: number, w: number, h: number, opts?: SceneryOpts): void;
+  mountain(x: number, z: number, baseY: number, w: number, h: number, opts?: MountainOpts | null): void;
   /** opts: profile ("massif"), rough, crest. */
-  ridge(x: number, z: number, baseY: number, ang: number, len: number, w: number, h: number, col: RVec3, opts?: SceneryOpts): void;
+  ridge(x: number, z: number, baseY: number, ang: number, len: number, w: number, h: number, col: VecIn, opts?: RidgeOpts | null): void;
   /** opts: rows, rise, depth, grass, riser, density, step, crowd, col. */
-  spectatorHill(s0: number, s1: number, side: number, gap: number, opts?: SceneryOpts): void;
+  spectatorHill(s0: number, s1: number, side: number, gap: number, opts?: SpectatorHillOpts | null): void;
   /** Legacy 6-arg stand; delegates to grandstandEx. nature.js:1211. */
-  grandstand(s: number, side: number, gap: number, len: number, shell?: RVec3 | null, crowd?: RVec3 | null): void;
+  grandstand(s: number, side: number, gap: number, len: number, shell?: VecIn | null, crowd?: VecIn | null): void;
   /** opts: livery, endWalls, and the §Grandstand variants keys. nature.js:976. */
-  grandstandEx(s: number, side: number, gap: number, len: number, shell: RVec3 | null, crowd: RVec3 | null, opts?: SceneryOpts): void;
+  grandstandEx(s: number, side: number, gap: number, len: number, shell: VecIn | null, crowd: VecIn | null, opts?: GrandstandOpts | null): void;
 
   // ── Structures (structures.js, city.js, identity.js) ────────────────────
-  bleacher(s0: number, s1: number, side: number, gap: number, opts?: SceneryOpts): void;
-  scaffoldStand(s0: number, s1: number, side: number, gap: number, opts?: SceneryOpts): void;
-  terrace(s0: number, s1: number, side: number, gap: number, opts?: SceneryOpts): void;
-  tieredBowl(s0: number, s1: number, side: number, gap: number, opts?: SceneryOpts): void;
+  bleacher(s0: number, s1: number, side: number, gap: number, opts?: BleacherOpts | null): void;
+  scaffoldStand(s0: number, s1: number, side: number, gap: number, opts?: ScaffoldStandOpts | null): void;
+  terrace(s0: number, s1: number, side: number, gap: number, opts?: TerraceOpts | null): void;
+  tieredBowl(s0: number, s1: number, side: number, gap: number, opts?: TieredBowlOpts | null): void;
   /** opts: wall, window, floor, arch, kind, neon. city.js:161. */
-  building(k: number, side: number, gap: number, w: number, h: number, d: number, opts?: SceneryOpts): void;
-  house(k: number, side: number, gap: number, w: number, h: number, d: number, opts?: SceneryOpts): void;
-  motorhome(k: number, side: number, gap: number, w: number, h: number, d: number, opts?: SceneryOpts): void;
+  building(k: number, side: number, gap: number, w: number, h: number, d: number, opts?: BuildingOpts | null): void;
+  house(k: number, side: number, gap: number, w: number, h: number, d: number, opts?: HouseOpts | null): void;
+  motorhome(k: number, side: number, gap: number, w: number, h: number, d: number, opts?: MotorhomeOpts | null): void;
   /** opts: col, seg, cap, capCol, mast. city.js:825. */
-  tower(k: number, side: number, dist: number, baseW: number, h: number, opts?: SceneryOpts): void;
-  billboard(k: number, side: number, gap: number, w: number, h: number, col: RVec3, opts?: SceneryOpts): void;
-  cityFront(s0: number, s1: number, side: number, gap: number, opts?: SceneryOpts): void;
+  tower(k: number, side: number, dist: number, baseW: number, h: number, opts?: CityTowerOpts | null): void;
+  billboard(k: number, side: number, gap: number, w: number, h: number, col: VecIn | null | undefined, opts?: BillboardOpts | null): void;
+  cityFront(s0: number, s1: number, side: number, gap: number, opts?: CityFrontOpts | null): void;
   /** Overhead structure across the track at fraction `s`. structures.js:329. */
-  gantry(s: number, h: number, col: RVec3, opts?: SceneryOpts): void;
-  marshalPost(k: number, side: number, gap: number, opts?: SceneryOpts): void;
+  gantry(s: number, h: number, col: VecIn | null | undefined, opts?: GantryOpts | null): void;
+  marshalPost(k: number, side: number, gap: number, opts?: MarshalPostOpts | null): void;
   /** opts: h, col, boom, railCol. */
-  cameraTower(k: number, side: number, gap: number, opts?: SceneryOpts): void;
+  cameraTower(k: number, side: number, gap: number, opts?: CameraTowerOpts | null): void;
   /** opts: vans, dishes, mastH, vanCol, dishCol, spacing. */
-  broadcastCompound(k: number, side: number, gap: number, opts?: SceneryOpts): void;
+  broadcastCompound(k: number, side: number, gap: number, opts?: BroadcastCompoundOpts | null): void;
   /** opts: h, step, palette, postCol. */
-  sponsorHoarding(s0: number, s1: number, side: number, gap: number, opts?: SceneryOpts): void;
+  sponsorHoarding(s0: number, s1: number, side: number, gap: number, opts?: SponsorHoardingOpts | null): void;
   /** Seven-segment digit at a world point. structures.js:929. */
-  signDigit(c: RVec3, r: RVec3, u: RVec3, t: RVec3, w: number, h: number, proud: number, col: RVec3, digit: number): void;
+  signDigit(c: VecIn, r: VecIn, u: VecIn, t: VecIn, w: number, h: number, proud: number, col: VecIn, digit: number): void;
   /** kind e.g. "braking" / "corner"; value is the number shown. structures.js:938. */
   signBoard(k: number, side: number, gap: number, kind: string, value: number): void;
   ferrisWheel(k: number, side: number, dist: number, radius: number): void;
   /** opts: h, thick, col, pierGap, pierW, depth. identity.js:24. */
-  underpassPortal(s: number, opts?: SceneryOpts): void;
+  underpassPortal(s: number, opts?: UnderpassPortalOpts | null): void;
   /** opts: h, cool, pool, arms, light. identity.js:62. */
-  floodMast(k: number, side: number, dist: number, opts?: SceneryOpts): void;
+  floodMast(k: number, side: number, dist: number, opts?: FloodMastOpts | null): void;
   /** Both sides every ~stepM; opts forwarded to floodMast (+ dist). identity.js:124. */
-  floodMastRing(stepM: number, opts?: SceneryOpts): void;
+  floodMastRing(stepM: number, opts?: FloodMastRingOpts | null): void;
   /** opts: r, bands, cols, seg, basis. identity.js:133. */
-  ledFacadeBands(c: RVec3, h: number, opts?: SceneryOpts): void;
+  ledFacadeBands(c: VecIn, h: number, opts?: LedFacadeBandsOpts | null): void;
   /** opts: h, thick, col, stripeCol, stripeH, stripeEvery. identity.js:156. */
-  concreteCanyon(s0: number, s1: number, side: number, gap: number, opts?: SceneryOpts): void;
+  concreteCanyon(s0: number, s1: number, side: number, gap: number, opts?: ConcreteCanyonOpts | null): void;
   /** opts: rad, rx, rz, h, col, ribs, thick. identity.js:184. */
-  sailCanopy(c: RVec3, basis: Basis, opts?: SceneryOpts): void;
+  sailCanopy(c: VecIn, basis?: BasisIn, opts?: SailCanopyOpts | null): void;
   /** opts: w, depth, h, cols, rows, ledCols, strutCol. identity.js:215. */
-  gridshellCanopy(c: RVec3, basis: Basis, opts?: SceneryOpts): void;
+  gridshellCanopy(c: VecIn, basis?: BasisIn, opts?: GridshellCanopyOpts | null): void;
   /** sz = [depth, thick, len] or a depth. identity.js:255. */
-  runoffApron(k: number, side: number, gap: number, sz: RVec3 | number, col: RVec3): void;
+  runoffApron(k: number, side: number, gap: number, sz?: VecIn | number | null, col?: VecIn | null): void;
   /** opts: saferGap, safer, step, kerbRed, kerbWht, saferCol. identity.js:284. */
-  bankedKerbStrip(s0: number, s1: number, side: number, opts?: SceneryOpts): void;
+  bankedKerbStrip(s0: number, s1: number, side: number, opts?: BankedKerbStripOpts | null): void;
   /** opts: h, thick, shell, step, crowdCols. identity.js:321. */
-  bowlSeatWall(s0: number, s1: number, side: number, gap: number, opts?: SceneryOpts): void;
+  bowlSeatWall(s0: number, s1: number, side: number, gap: number, opts?: BowlSeatWallOpts | null): void;
   /** opts: palette, minH, maxH, depth, step, lit, windowCol. identity.js:422. */
-  pastelStreetRow(s0: number, s1: number, side: number, gap: number, opts?: SceneryOpts): void;
+  pastelStreetRow(s0: number, s1: number, side: number, gap: number, opts?: PastelStreetRowOpts | null): void;
 
   // ── Barriers (structures.js:120-330) ────────────────────────────────────
-  wall(s0: number, s1: number, side: number, gap: number, h: number, col: RVec3, thick?: number, alt?: number): void;
-  fence(s0: number, s1: number, side: number, gap: number, h: number, col: RVec3, opts?: SceneryOpts): void;
-  guardrail(s0: number, s1: number, side: number, gap: number, col: RVec3, opts?: SceneryOpts): void;
-  tyreWall(s0: number, s1: number, side: number, gap: number, capCol: RVec3, opts?: SceneryOpts): void;
+  wall(s0: number, s1: number, side: number, gap: number, h: number, col: VecIn | null | undefined, thick?: number, alt?: number): void;
+  fence(s0: number, s1: number, side: number, gap: number, h: number, col: VecIn | null | undefined, opts?: FenceOpts | null): void;
+  guardrail(s0: number, s1: number, side: number, gap: number, col: VecIn | null | undefined, opts?: GuardrailOpts | null): void;
+  tyreWall(s0: number, s1: number, side: number, gap: number, capCol: VecIn | null | undefined, opts?: TyreWallOpts | null): void;
 }
 
-/** A circuit's scenery closure. f1-game: `window.TrackScenery[id] = function (api) { ... }`. */
-export type SceneryFn = (api: SceneryApi) => void;
+/**
+ * The engine globals three closures read directly: `TrackGeom` (unguarded
+ * emitters on model stages, shanghai.js:625, silverstone.js:320-1011),
+ * `TrackSpace` (monaco.js:22-73) and `TrackPit`.
+ */
+export type SceneryEngine = Pick<SceneryCore, "geom" | "space" | "pit">;
+
+/**
+ * A circuit's scenery closure. f1-game: `window.TrackScenery[id] = function (api) { ... }`,
+ * plus the engine globals above, which arrive as the second argument.
+ */
+export type SceneryFn = (api: SceneryApi, engine: SceneryEngine) => void;

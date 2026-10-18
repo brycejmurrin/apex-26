@@ -18,7 +18,7 @@
  */
 import type {
   Basis, LampPostSpec, MatName, RVec3, SceneryApi, SceneryBuffer, SceneryOpts, SceneryTheme,
-  LandmarkKit, CircuitKit,
+  LandmarkKit, CircuitKit, VecIn, BasisIn,
 } from "../../contracts/scenery";
 import type { Vec3 } from "../../contracts/track";
 import type { BakedMesh, SceneryCore } from "./core";
@@ -812,13 +812,18 @@ export function* buildSteps(track: PropsTrack, core: SceneryCore, kits: SceneryK
   // These three close that gap by expressing intent instead of arithmetic.
   const UPV: RVec3 = [0, 1, 0];
 
+  // The api takes plain arrays (VecIn/BasisIn, as f1-game passes them); the
+  // guarded emitters below type the same values as tuples.
+  const V = (v: VecIn): RVec3 => v as RVec3;
+  const B = (b: BasisIn | undefined): Basis | undefined => (b ?? undefined) as Basis | undefined;
   const seat: SceneryApi["seat"] = {
-    box:     (o, foot, sz, col, b) => addBox(o, vadd(foot, (b ? b[1] : UPV), sz[1] / 2), sz, col, b),
-    prism:   (o, foot, sz, col, b) => addPrism(o, foot, sz, col, b),
-    cyl:     (o, foot, rad, h, col, seg, b) => addCyl(o, foot, rad, h, col, seg, b),
-    cone:    (o, foot, rad, h, col, seg, b) => addCone(o, foot, rad, h, col, seg, b),
-    frustum: (o, foot, r0, r1, h, col, seg, b) => addFrustum(o, foot, r0, r1, h, col, seg, b),
+    box:     (o, foot, sz, col, b) => addBox(o, vadd(V(foot), (b ? V(b[1]!) : UPV), sz[1]! / 2), V(sz), V(col), B(b)),
+    prism:   (o, foot, sz, col, b) => addPrism(o, V(foot), V(sz), V(col), B(b)),
+    cyl:     (o, foot, rad, h, col, seg, b) => addCyl(o, V(foot), rad, h, V(col), seg, B(b)),
+    cone:    (o, foot, rad, h, col, seg, b) => addCone(o, V(foot), rad, h, V(col), seg, B(b)),
+    frustum: (o, foot, r0, r1, h, col, seg, b) => addFrustum(o, V(foot), r0, r1, h, V(col), seg, B(b)),
   };
+
 
   // foundation(): fill from `top` down to the LOWEST ground under the
   // footprint. Samples corners AND centre, because a single groundYAt() reuse
@@ -852,12 +857,12 @@ export function* buildSteps(track: PropsTrack, core: SceneryCore, kits: SceneryK
   // Hungaroring's lamps omitted the arm and 168 heads hovered beside bare
   // poles — the exact signature float-audit reports.
   const cantilever: SceneryApi["cantilever"] = (o, top, outM, side, headSz, headCol, armCol, b) => {
-    const rr: RVec3 = b ? b[0] : [1, 0, 0];
+    const rr: RVec3 = b ? V(b[0]!) : [1, 0, 0];
     const reach = Math.abs(outM);
     if (reach > 0.35)
-      addBox(o, vadd(top, rr, side * outM / 2), [reach + 0.5, 0.18, 0.22],
-             armCol || [0.30, 0.30, 0.34], b);
-    addBox(o, vadd(top, rr, side * outM), headSz, headCol, b);
+      addBox(o, vadd(V(top), rr, side * outM / 2), [reach + 0.5, 0.18, 0.22],
+             armCol ? V(armCol) : [0.30, 0.30, 0.34], B(b));
+    addBox(o, vadd(V(top), rr, side * outM), V(headSz), V(headCol), B(b));
   };
   const overheadSpan: SceneryApi["overheadSpan"] = (spec) => models.overheadSpan(spec);
   const waterSurface = (k: number, side: number, gap: number, sz: RVec3, col: RVec3, opts?: SceneryOpts): boolean => {
@@ -960,13 +965,13 @@ export function* buildSteps(track: PropsTrack, core: SceneryCore, kits: SceneryK
   const waterField: SceneryApi["waterField"] = (k, side, gap0, gap1, halfLen, cell, col, opts) => {
     const c = Math.max(4, cell || 12);
     const half = Math.max(1, Math.round(halfLen / ds));
-    return waterEmit(waterRaster(k - half, k + half, side, gap0, gap1, c), c, col, opts);
+    return waterEmit(waterRaster(k - half, k + half, side, gap0, gap1, c), c, V(col), opts);
   };
   const waterBand: SceneryApi["waterBand"] = (s0, s1, side, gap0, gap1, cell, col, opts) => {
     const c = Math.max(4, cell || 12);
     const k0 = Math.round(s0 * n) % n, k1 = Math.round(s1 * n) % n;
     const span = Math.abs(s1 - s0) >= 1 - 1e-9 ? n - 1 : ((k1 - k0) + n) % n;
-    return waterEmit(waterRaster(k0, k0 + span, side, gap0, gap1, c), c, col, opts);
+    return waterEmit(waterRaster(k0, k0 + span, side, gap0, gap1, c), c, V(col), opts);
   };
   // T3 draped groundPatch lives in TrackModels (models.js); thin wrapper here.
   const groundPatch: SceneryApi["groundPatch"] = (k, side, gap, sz, col, opts) =>
@@ -2144,7 +2149,7 @@ export function* buildSteps(track: PropsTrack, core: SceneryCore, kits: SceneryK
     // FINAL api — the wrapped anchor/K/along — so they take authored-frame
     // k and s like circuit code and need no wrapper of their own.
     const fullApi: SceneryApi = Object.assign(sceneryApi, TrackModels.drapeKit(sceneryApi));
-    sceneryFn(fullApi);
+    sceneryFn(fullApi, { geom: core.geom, space: core.space, pit: core.pit });
   }
 
   kits.SceneryVenue.build(ctxAll, sceneryTheme, dressingExcluded);
