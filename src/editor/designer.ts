@@ -243,7 +243,8 @@ const COACH_KEY = "designerCoached";
 const stampKind = (name: string): TrackStamps.StampKind | undefined => (TrackStamps.KINDS as { [k: string]: TrackStamps.StampKind | undefined })[name];
 
 /** One TrackDesigner: f1-game's IIFE body (designer.js:12-2519) over `deps`. */
-function createDesigner(deps: DesignerDeps) {
+/** `mapsDefault`: the TrackMaps used while `deps.trackMaps` is absent (mount passes the port). */
+function createDesigner(deps: DesignerDeps, mapsDefault: DesignerDeps["trackMaps"] = null) {
   const S = TrackShape;
   const Log = {
     info(ns: string, msg: string) { if (deps.log && deps.log.info) deps.log.info(ns, msg); },
@@ -1818,7 +1819,7 @@ function createDesigner(deps: DesignerDeps) {
     while (ui.lib.firstChild) ui.lib.removeChild(ui.lib.firstChild);
     const items = custom!.list();
     if (!items.length) { ui.lib.appendChild(el("div", "td-empty", "No saved circuits yet — open DESIGN, then SAVE your circuit. Saved circuits also show under MY CIRCUITS in the RACE picker.")); return; }
-    const TrackMaps = deps.trackMaps || null;
+    const TrackMaps = deps.trackMaps || mapsDefault || null;
     for (const it of items) {
       const card = el("div", "td-card");
       const c = el("canvas"); c.width = 320; c.height = 220; c.setAttribute("aria-hidden", "true");
@@ -2600,7 +2601,7 @@ function createDesigner(deps: DesignerDeps) {
     g.fillStyle = "#000"; g.fillRect(0, 0, CARD_W, CARD_H);   // opaque under the translucent chip ink
     g.fillStyle = COL.chipBg; g.fillRect(0, 0, CARD_W, CARD_H);
     let ink: string = COL.handle;
-    const TrackMaps = deps.trackMaps || null;
+    const TrackMaps = deps.trackMaps || mapsDefault || null;
     try { ink = (TrackMaps!.themeColor && TrackMaps!.themeColor(preview.def)) || ink; } catch (_) { ink = COL.handle; }
     strokeOutline(g, tr, { x: 28, y: 28, w: 304, h: 304 }, ink);
     const X = 376, W = CARD_W - X - 24, T = TrackThemes.get(item.theme);
@@ -2794,13 +2795,13 @@ export function mount(el: HTMLElement, deps: DesignerDeps): DesignerHandle {
     el.appendChild(head);
   }
   // f1-game's browser always loads js/ui/track-maps.js: the mounted screen gets the
-  // ported TrackMaps for its thumbnails and card ink, and validate.ts gets it for
+  // ported TrackMaps for its thumbnails and card ink whenever deps.trackMaps is
+  // absent (read live, as every other dep is, so a later deps edit still wins), and validate.ts gets it for
   // bakeTurns / insight's classes. The unmounted default stays TrackMaps-less (the
   // goldens' headless VM); destroy() puts back whatever was injected before.
-  if (!deps.trackMaps) deps = Object.assign({}, deps, { trackMaps: TrackMaps });
   const priorMaps = TrackValidate.getTrackMaps();
   TrackValidate.setTrackMaps(TrackMaps);
-  const d = createDesigner(deps);
+  const d = createDesigner(deps, TrackMaps);
   const handle: DesignerHandle = Object.freeze(Object.assign({}, d, {
     destroy() {
       d.destroy();

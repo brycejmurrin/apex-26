@@ -1237,9 +1237,7 @@ describe("track-designer-dom (f1-game): insight", () => {
     openGreen(b);
     const s = st(b), list = turnsList(b);
     assert.equal(list.getAttribute("aria-label"), "Corners, in driving order");
-    // f1-game: >= 3. Its VM loaded js/ui/track-maps.js (TrackMaps.detectCorners); apex-26 has not ported it
-    // (validate.ts setTrackMaps is unset), so seed 7 bakes 2 turns. Rows 0 and 1 are all the test reads.
-    assert.ok(s.corners.length >= 2, s.corners.length + " corners");
+    assert.ok(s.corners.length >= 3, s.corners.length + " corners");
     assert.equal(list.children.length, s.corners.length, "one row per corner");
     for (const li of kids(list)) {
       assert.equal(li.dataset.level, "info"); assert.equal(li.tabIndex, 0);
@@ -1482,10 +1480,7 @@ describe("track-designer-dom (f1-game): authoring", () => {
     stepBy(row, 3);
     let d = dz(b);
     assert.equal(d.bankZones.length, 1, "three presses, one zone");
-    // f1-game compared frac with c.sApex / total; designer.js:1979 stores wrap01(c.sApex / L), which rounds
-    // 0.7499999999999999 to 0.75 on this (TrackMaps-less) build's T2.
-    const wrap01 = (x: number) => ((x % 1) + 1) % 1;
-    assert.deepEqual(plain(d.bankZones[0]), { frac: wrap01(c.sApex / v0.tr!.total), angleDeg: 6, widthM: Math.round(Math.min(600, Math.max(20, c.lenM))) });
+    assert.deepEqual(plain(d.bankZones[0]), { frac: c.sApex / v0.tr!.total, angleDeg: 6, widthM: Math.round(Math.min(600, Math.max(20, c.lenM))) });
     assert.equal(st(b).undo, u0 + 3);
     assert.deepEqual(plain(d.pts), s.design!.pts, "no point moves");
     assert.equal(val.textContent, "6°");
