@@ -7,7 +7,7 @@
  * until that stage has run, exactly as in f1-game.
  */
 import type { BuiltDef } from "./def";
-import type { BankProfile } from "./mesh";
+import type { BankProfile, NodeGrid } from "./mesh";
 import type { LineCorner } from "./line";
 import type { PitModel } from "./pit";
 import type { SurfaceProfile } from "./surface";
@@ -69,7 +69,7 @@ export interface PostLimitsOut {
 export interface GeometryDiagnostic {
   name: string;
   ok: boolean;
-  [key: string]: unknown;
+  reason?: string;
 }
 
 /** The terrain spatial grid cached by tracks.js:643 terrainGrid. */
@@ -129,12 +129,12 @@ export interface Track {
   /** Banking profile (mesh.js:90 bankingProfile). */
   bankP?: BankProfile | null;
   /** Kerb sides per node (mesh.js buildKerbs). */
-  kerbL?: Uint8Array | Float32Array | number[];
-  kerbR?: Uint8Array | Float32Array | number[];
+  kerbL?: Uint8Array;
+  kerbR?: Uint8Array;
   /** Road colour picked by buildRoad (mesh.js). */
-  asphaltCol?: RV3;
+  asphaltCol?: V3;
   /** Node spatial grid cached by mesh.js nodeGrid. */
-  _nodeGrid?: unknown;
+  _nodeGrid?: NodeGrid;
 
   pit?: PitModel | null;
   surface?: SurfaceProfile;

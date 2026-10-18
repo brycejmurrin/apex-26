@@ -263,7 +263,7 @@ export interface PitModel {
   entryM: number; exitM: number; lenM: number; entryRoadM: number; exitRoadM: number; grow: number;
   /** Per node: lane width weight, wall weight, bay-lane weight, keep-out lateral (m past hw). */
   w: Float32Array; v: Float32Array; b: Float32Array; keep: Float32Array;
-  row: { pitch: number; boxLen: number; first: number; count: number; boxes: PitBox[]; s0: number; s1: number; tail: number };
+  row: { pitch: number; boxLen: number; first: number; count: number; boxes: PitBox[]; s0: number; s1: number; tail: number; painted?: number[] };
   bay: Bay;
 }
 
