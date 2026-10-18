@@ -29,10 +29,14 @@ lane map those sessions work from. The coordinator is session
    repo (`git clone --depth 50 https://github.com/brycejmurrin/f1-game ../f1-game`) and
    cite `file:line` in a header comment on each ported file. Follow AGENTS.md §Porting
    (float operation order, no `any`, no globals).
-5. **Tests:** a Vitest unit test for each ported pure module. Wherever f1-game can
+5. **Running f1-game code:** lane sessions' auto mode refuses to *execute* f1-game code
+   (game-vm, TRACK_VM); reading it is fine. For reference output, message the coordinator
+   `NEED-DUMP lane-<id> <exact spec>`; it runs the dump and pushes it under
+   `tests/goldens/` or `tests/fixtures/` (producers live in `tools/oracle/`).
+6. **Tests:** a Vitest unit test for each ported pure module. Wherever f1-game can
    produce reference output (Node VM: `tools/lib/game-vm.cjs`), compare against it.
    Playwright only for boot, render or input changes.
-6. **Report:** after each merge, send the coordinator one `send_message` line:
+7. **Report:** after each merge, send the coordinator one `send_message` line:
    `MERGED lane-<id> <PR url> <sha> — <what landed>; next: <next task>`.
    When blocked: `BLOCKED lane-<id> <reason>`. Keep going on the next item while you wait.
 
