@@ -6,6 +6,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
+import zlib from "node:zlib";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
@@ -63,6 +64,7 @@ export function encode(value) {
 export function writeGolden(name, value) {
   const out = path.join(ROOT, "tests", "goldens", name);
   fs.mkdirSync(path.dirname(out), { recursive: true });
-  fs.writeFileSync(out, encode(value) + "\n");
+  const text = encode(value) + "\n";
+  fs.writeFileSync(out, name.endsWith(".gz") ? zlib.gzipSync(text, { level: 9 }) : text);
   console.log(`wrote ${path.relative(ROOT, out)} (${(fs.statSync(out).size / 1024).toFixed(0)} KB)`);
 }

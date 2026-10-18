@@ -55,8 +55,9 @@ lane map those sessions work from. The coordinator is session
 | data | data hub | `src/data/` | OpenF1 + Jolpica clients (typed) with caching | Data Hub tabs: schedule, standings, last race, live, telemetry, export |
 | net | multiplayer | `src/net/` | WebRTC transport, Nostr signalling, invite/QR (`js/net/`) | lobby, replicated rivals, host-authoritative snapshots (20 Hz) |
 
-Later lanes, started by the coordinator when their inputs exist: `editor` (track
-designer, `src/editor/`, needs track), `xr` (`src/xr/`, needs render), `garage`
+Reassigned: the track lane also owns `editor` (track designer, `src/editor/`), from 2026-10-18.
+
+Later lanes, started by the coordinator when their inputs exist: `xr` (`src/xr/`, needs render), `garage`
 (`src/garage/`, needs car + race), and `debris` (Rapier side-worlds, `src/physics/debris/`).
 
 ## Live sessions (2026-10-18)

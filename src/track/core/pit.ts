@@ -7,9 +7,9 @@
  * Differences from f1-game, none of which change a number:
  * - `window` is exported as `pitWindow` (and aliased `window`).
  * - `row()` reads f1-game's `Teams` global at call time; here the team list is an
- *   optional argument (TODO(lane-race): pass the team table). Without it the row
- *   is twelve unnamed bays, exactly as in f1-game's bare Node VM, so geometry
- *   never depends on it.
+ *   argument (tracks.ts buildTrack passes src/car/teams.ts by default). Without it
+ *   the row is twelve unnamed bays, as in a VM with no Teams; bay positions never
+ *   depend on it, only the painted box colours do.
  */
 import type { PitArchitecture, PitBands, PitSpec, RoofKnot } from "../../circuits/types";
 import type { RV3, Track } from "./types";
