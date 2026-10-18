@@ -6,7 +6,7 @@ execute f1-game code); never hand-edit.
 
 | file | producer | contents |
 |---|---|---|
-| `track-<id>.json.gz` | `node tools/oracle/track-dump.cjs --f1 ../f1-game <ids…>` | built track typed arrays (`arrays`, `pit`, `bankP`), scalars, and `queries`: `Tracks.sample` / `banking` / `onKerb` / `inPitLane` at 2,000 evenly spaced `s` × lateral `x ∈ {-1,-.5,0,.5,1}·hw`, plus `wallAt(s, ±1)` |
+| `track-<id>.json.gz` | `node tools/oracle/track-dump.cjs --f1 ../f1-game <ids…>` | built track typed arrays (`arrays`, `pit`, `bankP`), scalars, and `queries`: `Tracks.sample` / `banking` / `onKerb` / `inPitLane` at 2,000 evenly spaced `s` × lateral `x ∈ {-1,-.5,0,.5,1}·hw`, plus `wallAt(s, ±1)`, and `meshes`: every `gfx.createMesh` call of the build in order (`verts`, `idx` count, sha256 of `pos`/`nrm`/`col` as Float64 LE and `idx`/`mat` as Uint32). The build is f1-game's full one (scenery loaded), so props it bakes into those buffers are included. Monza, spa, monaco, madrid, zandvoort use 2,000 samples; the other 47 circuits 200 (`--all --samples 200`). |
 
 Load with `JSON.parse(zlib.gunzipSync(fs.readFileSync(path)))`. Values are raw doubles
 (Float32Array entries widened exactly), so compare with `Object.is`. `header.sha` is the
