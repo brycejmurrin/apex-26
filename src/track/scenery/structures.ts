@@ -246,7 +246,8 @@ export function create(ctx: StructuresCtx, core: SceneryCore): StructuresApi {
       }
       const place = { o: p.c, r: p.r, u: p.u, t: p.t };
       // structures.js:184-193: carry a raised verge down to the rendered ground.
-      const terrain = core.tracks.terrainY(track, p.c[0], p.c[2]);
+      // Unguarded in f1-game (throws without Tracks), hence the `!`.
+      const terrain = core.tracks!.terrainY(track, p.c[0], p.c[2]);
       const surface = track["surface"] as { readonly floorY?: number } | null | undefined;
       const ground = Number.isFinite(terrain) ? terrain
         : surface && surface.floorY;

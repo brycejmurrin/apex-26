@@ -191,7 +191,7 @@ export interface ScalarCore {
 
 /**
  * f1-game js/track/tracks.js:775 (`Tracks`), the members scenery reads.
- * structures.js:188 (`fence`) is the one kit that reads the track shell.
+ * nature.js:613/:1314/:1343 and structures.js:188 (`fence`) read the track shell.
  */
 export interface TracksCore {
   /** tracks.js:723: rendered-terrain height at world XZ, or null off the terrain mesh. */
@@ -203,12 +203,6 @@ export interface AssetsCore {
   modelSync(id: string): BakedMesh | null;
 }
 
-/** f1-game js/track/tracks.js:775 (`Tracks`), the members scenery reads. */
-export interface TracksCore {
-  /** tracks.js:723: drawn-terrain height at world XZ, or null off the terrain mesh. */
-  terrainY(track: BuildTrack, x: number, z: number): number | null;
-}
-
 export interface SceneryCore {
   readonly geom: GeomCore;
   readonly mesh: MeshCore;
@@ -217,7 +211,6 @@ export interface SceneryCore {
   readonly spline: SplineCore;
   readonly surface: SurfaceCore;
   readonly scalar: ScalarCore;
-  readonly tracks: TracksCore;
   /** Absent in a build without the asset pack (bakedModel then returns false). */
   readonly assets: AssetsCore | null;
   /**
