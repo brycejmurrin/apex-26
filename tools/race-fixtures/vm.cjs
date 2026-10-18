@@ -66,4 +66,4 @@ function write(name, data) {
   console.log("wrote", path.relative(process.cwd(), out));
 }
 
-module.exports = { ROOT, context, load, rng, write };
+module.exports = { ROOT, context, load, rng, write, rev };

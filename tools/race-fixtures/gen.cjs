@@ -625,3 +625,34 @@ write("caution-machine", [machineRun(5, false), machineRun(6, true), machineRun(
   function shuffledPick(r, a) { return a.filter(() => r() < 0.7); }
   write("season-cal", { list: LIST, scripts });
 }
+
+// ─── roster: driver ratings and the My Team repair ─────────────────────────
+{
+  const ctx = context({ M4: { clamp: (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v) } });
+  load(ctx, "js/core/hash32.js");
+  load(ctx, "js/data/teams.js");
+  load(ctx, "js/data/driver-ratings.js");
+  const T = read(ctx, "Teams"), D = read(ctx, "DriverRatings"), r = rng(17);
+  const codes = Object.keys(D.BASE).concat(Object.keys(D.HIRES), ["YOU", "ZZZ", "", "AB‮C", "Q" + 7]);
+  const ratings = [];
+  for (const code of codes) for (const tier of [0, 2, 4, 9]) {
+    const deltas = r() < 0.4 ? { pace: Math.round(r() * 20 - 10), aggression: 50, craft: "x", optimism: -99 } : null;
+    const g = D.get(code, tier, deltas);
+    ratings.push({ code, tier, deltas, g, overall: D.overall(g), skill: D.skill(g, r()), roll: null });
+  }
+  // skill's roll recorded explicitly
+  for (const x of ratings) { x.roll = Math.round(r() * 1000) / 1000; x.skill = D.skill(x.g, x.roll); }
+  const nasty = ["  Max ‮Verstappen\u0007 ", 42, "", "a".repeat(40), "⁦x⁩"];
+  const customs = [];
+  for (let i = 0; i < 40; i++) {
+    const t = r() < 0.1 ? pick(r, [null, 5, "x", []]) : {
+      name: pick(r, nasty), short: pick(r, ["you", "toolong", "‎", 3]), engine: pick(r, ["Honda", "", 9]),
+      tier: pick(r, [0, 4, 5, -1, 2.5, "1"]), color: pick(r, [[0.1, 2, -1], [1, 1], "red", [0, NaN, 1]]),
+      color2: [0.5, 0.5, 0.5, 9], stats: pick(r, [{ speed: 120, accel: -5, cornering: "x" }, null]),
+      livery: pick(r, [{ finShape: "constructor", spineLogo: " fade ", cover: [0.1, 0.2, 0.3], bad: [1, 2], __proto__x: 1 }, undefined]),
+      drivers: pick(r, [[{ name: "A", code: "abcd", num: 120.6 }, { name: 3, code: null, num: -4 }, 7, { code: "x" }], [], "x"]),
+    };
+    customs.push({ t, out: T.sanitizeCustom(t) });
+  }
+  write("roster", { ratings, customs, points: T.POINTS, tierV: T.TIER_V, list: T.LIST, defaultCustom: T.DEFAULT_CUSTOM });
+}
