@@ -7,6 +7,8 @@
 import { InstancedMesh, type Material, type Matrix4 } from "three/webgpu";
 import { build, type PartTiers } from "./car3d";
 import { FieldLod, type LodCar } from "./field-lod";
+import { getFactorySetup, getVisualTiers } from "./parts";
+import { LIST as TEAMS } from "./teams";
 import { createCarMaterial } from "./material";
 import { meshToGeometry } from "./three";
 import type { MeshOut, Vec3 } from "./types";
@@ -14,14 +16,17 @@ import type { MeshOut, Vec3 } from "./types";
 /** car-draw.js:231: neutral grey; the livery lives on the wheels at this range. */
 export const SHARED_BODY_GREY: Vec3 = [0.72, 0.72, 0.72];
 
+/** The first team's factory visual tiers (car-draw.js:229-230). */
+export function sharedBodyParts(): PartTiers {
+  const team = TEAMS[0]!;
+  return getVisualTiers(getFactorySetup(team), team) as PartTiers;
+}
+
 /** Car3D.build of the shared far body (car-draw.js:231-234): the field/silhouette
- *  cover, no driver, no wheels, flat shading. `parts` is the first team's factory
- *  visual tiers in f1-game (Parts.getVisualTiers(Parts.getFactorySetup(Teams.LIST[0]))).
- *  TODO(lane-car/parts): default `parts` from Parts once the catalog port merges. */
-export function sharedBodyMesh(parts?: PartTiers): MeshOut {
+ *  cover, no driver, no wheels, flat shading, the first team's factory parts. */
+export function sharedBodyMesh(parts: PartTiers = sharedBodyParts()): MeshOut {
   return build(SHARED_BODY_GREY, SHARED_BODY_GREY, {
-    field: true, silhouette: true, noDriver: true, noWheels: true, livery: {}, smooth: false,
-    ...(parts ? { parts } : {}),
+    field: true, silhouette: true, noDriver: true, noWheels: true, livery: {}, smooth: false, parts,
   });
 }
 

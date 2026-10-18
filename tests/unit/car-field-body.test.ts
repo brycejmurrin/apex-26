@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Matrix4 } from "three/webgpu";
 import { build } from "../../src/car/car3d";
-import { createFieldBodies, sharedBodyMesh, SHARED_BODY_GREY, usesSharedBody } from "../../src/car/field-body";
+import { createFieldBodies, sharedBodyMesh, sharedBodyParts, SHARED_BODY_GREY, usesSharedBody } from "../../src/car/field-body";
 import { FieldLod } from "../../src/car/field-lod";
 import type { MeshOut } from "../../src/car/types";
 import { haveF1, loadF1Car, plain } from "../helpers/f1-car-vm";
@@ -9,7 +9,7 @@ import { haveF1, loadF1Car, plain } from "../helpers/f1-car-vm";
 // f1-game js/car/car-draw.js:226 sharedRivalBodyMesh and js/game.js:7931.
 describe("shared far-field body", () => {
   it("is far cheaper than a team body and neutral grey", () => {
-    const shared = sharedBodyMesh(), full = build(undefined, undefined, { noWheels: true });
+    const shared = sharedBodyMesh(), full = build(undefined, undefined, { noWheels: true, parts: sharedBodyParts() });
     expect(shared.mat.length).toBeLessThan(full.mat.length * 0.6);
     // Paint is the grey body; only small fixed-colour trim (T-cam pod, status light) differs.
     let paint = 0, grey = 0;
@@ -48,9 +48,14 @@ describe("shared far-field body", () => {
   });
 
   it.skipIf(!haveF1)("matches f1-game's shared body build bit for bit", () => {
-    const Car3D = loadF1Car()["Car3D"] as { build(a: unknown, b: unknown, o: unknown): MeshOut };
+    const vm = loadF1Car({ extra: ["js/data/teams.js", "js/car/parts.js"], globals: ["Teams", "Parts"] });
+    const Car3D = vm["Car3D"] as { build(a: unknown, b: unknown, o: unknown): MeshOut };
+    const Teams = vm["Teams"] as { LIST: unknown[] };
+    const Parts = vm["Parts"] as { getFactorySetup(t: unknown): unknown; getVisualTiers(s: unknown, t: unknown): unknown };
+    const team = Teams.LIST[0];
     const g = [0.72, 0.72, 0.72];
-    const ref = Car3D.build(g, g, { field: true, silhouette: true, noDriver: true, noWheels: true, livery: {}, smooth: false });
+    const ref = Car3D.build(g, g, { field: true, silhouette: true, noDriver: true, noWheels: true, livery: {}, smooth: false,
+      parts: Parts.getVisualTiers(Parts.getFactorySetup(team), team) });
     expect(plain(sharedBodyMesh())).toEqual(plain(ref));
   });
 });
