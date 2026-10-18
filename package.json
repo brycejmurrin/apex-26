@@ -17,6 +17,8 @@
     "postinstall": "patch-package --error-on-fail --error-on-warn"
   },
   "dependencies": {
+    "@trystero-p2p/nostr": "0.25.4",
+    "jsqr": "1.4.0",
     "three": "0.186.1"
   },
   "devDependencies": {

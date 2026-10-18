@@ -7,3 +7,4 @@ export type * from "./sim";
 export type * from "./render";
 export type * from "./scenery";
 export type * from "./race";
+export type * from "./net";
