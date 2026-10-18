@@ -48,15 +48,8 @@ const decV = (v: number): number => v / 100;
 const encH = (h: number): number => (Math.round((((h % TAU) + TAU) % TAU) / TAU * U16) % U16) & 0xffff;
 const decH = (v: number): number => (v / U16) * TAU;
 
-/**
- * The car fields a snapshot carries, typed against `CarState`.
- * `braking` is not on CarState (f1-game sets `c.braking` in updateCar);
- * TODO(coordinator): add `braking` to CarState in a contracts PR, then drop it here.
- */
-export type WireCarSource = Partial<Pick<CarState, "s" | "x" | "head" | "speed" | "gear" | "lap" | "deploying" | "offroad">> & {
-  readonly onKerb?: boolean | undefined;
-  readonly braking?: boolean | undefined;
-};
+/** The car fields a snapshot carries, typed against `CarState`. */
+export type WireCarSource = Partial<Pick<CarState, "s" | "x" | "head" | "speed" | "gear" | "lap" | "deploying" | "offroad" | "onKerb" | "braking">>;
 
 /** One decoded car. Every field the encoder writes, plus the wire id and age. */
 export interface WireCar {

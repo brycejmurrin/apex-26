@@ -23,7 +23,7 @@ export function makePlaceholderCar(): CarState {
     human: true, local: true, isPlayer: true,
     s: 0, x: 0, prog: 0, lap: 0,
     px: 0, pz: 0, head: 0, speed: 0, vLat: 0, yawRateCur: 0,
-    steerSm: undefined, kerbGripSm: 1,
+    steerSm: undefined, kerbGripSm: 1, braking: false,
     gear: 1, rpm: 0, shiftT: 0,
     energy: 1, boostOn: false, deploying: false, xOn: false, aeroX: 0,
     onKerb: undefined, inPitLane: undefined, offroad: false,
