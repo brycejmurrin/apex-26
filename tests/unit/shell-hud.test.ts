@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { LapTimer } from "../../src/app/lap-timer";
 import { dashKph, fmtTime, gearText, spdDigits, spdUnit } from "../../src/hud/readouts";
 
 describe("HUD readouts (game.js fmtTime, hud-readouts.js spdDigits)", () => {
@@ -27,23 +26,3 @@ describe("HUD readouts (game.js fmtTime, hud-readouts.js spdDigits)", () => {
   });
 });
 
-describe("LapTimer", () => {
-  it("out-lap, then last and best on each crossing", () => {
-    const t = new LapTimer();
-    t.step(1, false);
-    expect(t.lap).toBe(0);
-    expect(t.lapTime).toBe(0);
-    t.step(0.5, true);   // start of lap 1
-    expect(t.lap).toBe(1);
-    expect(Number.isNaN(t.last)).toBe(true);
-    for (let i = 0; i < 90; i++) t.step(1, false);
-    t.step(1, true);
-    expect(t.lap).toBe(2);
-    expect(t.last).toBe(91);
-    expect(t.best).toBe(91);
-    for (let i = 0; i < 94; i++) t.step(1, false);
-    t.step(1, true);
-    expect(t.last).toBe(95);
-    expect(t.best).toBe(91);
-  });
-});

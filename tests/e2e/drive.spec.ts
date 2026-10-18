@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("keyboard drives the placeholder car (T1.9)", async ({ page }) => {
+test("keyboard drives the car (T1.9)", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("./");
