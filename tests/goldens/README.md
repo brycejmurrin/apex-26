@@ -11,3 +11,4 @@ execute f1-game code); never hand-edit.
 Load with `JSON.parse(zlib.gunzipSync(fs.readFileSync(path)))`. Values are raw doubles
 (Float32Array entries widened exactly), so compare with `Object.is`. `header.sha` is the
 f1-game commit they came from.
+| `physics-<field\|solo>-<scenario>.json.gz` | `node tools/oracle/physics-dump.cjs --f1 ../f1-game` | the 4 f1-game physics-characterization recipes on Monza (dry, 1/60 s): per step the applied `input`, `__apex.physState()` (`phys`) and every numeric/boolean `G.player` field as raw doubles (`car`, ordered by `carKeys`; `init` = state after reset). `field` runs with the AI grid (asserted equal to f1-game's committed browser baseline at 1e-4); `solo` retires every AI car first. For these 4 recipes the two are identical (no car interaction). |
