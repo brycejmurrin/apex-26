@@ -50,11 +50,11 @@ describe("teams", () => {
     expect(t.drivers).toEqual([{ name: "A", code: "ABC", num: 99 }, { name: "B", code: "YOU", num: 99 }]);
   });
 
-  it("checks livery enums against the car lane's registered ids", () => {
+  it("checks livery enums against the car lane's id tables", () => {
     expect(Teams.liveryEnumOk("finShape", "anything")).toBe(true);
-    Teams.registerLiveryEnumIds({ finShape: ["none", "stepped"] });
-    expect(Teams.liveryEnumOk("finShape", "anything")).toBe(false);
-    expect(Teams.liveryEnumOk("finShape", "stepped")).toBe(true);
+    const deps = { Car3D: { FIN_SHAPE_IDS: ["none", "stepped"] } };
+    expect(Teams.liveryEnumOk("finShape", "anything", deps)).toBe(false);
+    expect(Teams.liveryEnumOk("finShape", "stepped", deps)).toBe(true);
     expect(Teams.liveryEnumOk("spineLogo", "toString")).toBe(false);
   });
 });
