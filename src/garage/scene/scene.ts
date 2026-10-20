@@ -31,6 +31,7 @@
  * - M4.mulTo (recentre) is src/xr/mat4.ts mulTo, the same verbatim port.
  */
 import { mulTo } from "../../xr/mat4";
+import { createGarageExperience } from "../experience";
 import { Parts, type PartSetup, type PartsTeam } from "../../car/parts";
 import { log as dataLog } from "../../data/log";
 import { BANDS, BAY, BOX_LEN } from "../../track/core/pit";
@@ -956,7 +957,7 @@ export interface SceneDeps {
   readonly parts?: GarageParts | null | undefined;
   /** Career. TODO(lane-race). */
   readonly career?: GarageCareer | null | undefined;
-  /** GarageExperience. TODO(lane-data): js/garage/experience.js. Default NO_EXPERIENCE. */
+  /** GarageExperience. Default: ../experience.ts over this scene's `career` (NO_EXPERIENCE is the inactive-career stand-in). */
   readonly experience?: GarageExperienceApi | undefined;
   /** GameStore.store. TODO(lane-data): src/garage/store.ts. */
   readonly store?: GarageStoreRev | null | undefined;
@@ -1041,7 +1042,7 @@ export interface GarageSceneApi {
  */
 export function createGarageScene(deps: SceneDeps = {}): GarageSceneApi {
   const log = deps.log || dataLog;
-  const experience = deps.experience || NO_EXPERIENCE;
+  const experience = deps.experience || createGarageExperience({ career: deps.career });
   const LiveryTex = deps.livery || null;
   const nowMs = deps.now || (() => (typeof performance !== "undefined" ? performance.now() : Date.now()));
   const createCanvas = deps.createCanvas === undefined ? domCanvas() : deps.createCanvas;

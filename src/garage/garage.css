@@ -1,0 +1,2035 @@
+@layer components {
+/* apex-26: src/garage/garage.css — f1-game css/carsetup.css:1-1947 verbatim, then
+   css/garage-experience.css:1-17, then the tuner / select-screen rules the
+   garage DOM uses (cited at each block). Every rule is inside a cascade layer. */
+/* Apex 26 — the CAR SETUP screen (tabs, options, livery swatches + creator).
+
+   THE ONE THING THAT MAKES THIS SCREEN DIFFERENT: it is a DOCKED panel, not a
+   centred sheet. The game keeps rendering behind it (renderSetupPreview in
+   game.js draws the live 3D car and reads #cs-inner's live width to shift the
+   frustum), so the sheet is pinned to the RIGHT edge of the screen and the left
+   of the viewport stays clear for the car. Everything else is the shared
+   vocabulary from css/components.css:
+
+     #carsetup  .screen      — full-viewport overlay, padded by the OS safe area
+     #cs-inner  .sheet       — head / body / foot; also the `sheet` query container
+     #cs-body   .sheet-body  — stacked: strip + options; pair: rail + options
+     #cs-tabs   .pane        — pair-on: vertical rail (may scroll); stacked: horizontal strip
+     #cs-options .pane       — the dominant options scroller
+
+   DENSITY comes from the tokens (--pad/--gap/--tap/--chip-h/--label); this file
+   hard-codes no paddings that a short phone needs to change. LAYOUT — whether
+   the categories are a horizontal strip above the options or a vertical rail
+   beside them, and whether the stat bars are one column or two — keys on
+   SheetShape's `data-pair`, so the panel reacts to the width it actually got
+   rather than to a guess about the device. */
+
+.sel-edit-row { display: flex; gap: var(--gap); margin-top: 10px; flex-wrap: wrap; }
+.sel-edit-row .sel-edit { margin-top: 0; }
+
+/* ---------- the docked screen ---------- */
+/* No backdrop and no pointer capture: the live car preview behind stays both
+   visible and (harmlessly) untouched. `place-items: stretch end` is the whole
+   docking trick — the sheet fills the safe box vertically and sits against its
+   right edge, while .screen's safe-area padding keeps it clear of the notch and
+   the home indicator. */
+#carsetup {
+  z-index: 35;
+  background: transparent;
+  pointer-events: none;
+  place-items: stretch end;
+  /* The sheet's width, as a variable, because the preview camera bar has to
+     know it too — it is positioned against the OTHER edge of the same box and
+     must stop before the sheet starts. Hard-coding a second guess at this
+     (38vw) is what put the TOP chip underneath the panel on a notched phone:
+     the bar starts after the safe-area inset, so "38% of the viewport" is not
+     38% of the room it actually has. */
+  /* ONE ZOOM-AWARE FORMULA, replacing the three-branch width ladder that used to
+     live here (a base, a >=1100px cap, a <1100px desktop floor). Read it as: the
+     panel takes what is left after the car keeps 320 VISUAL px, floored at what
+     the rail needs and capped where the panel stops benefiting.
+
+     WHY THE ARITHMETIC IS IN TWO UNIT SPACES. This value is consumed as the
+     WIDTH of #cs-inner, which carries `zoom: var(--ui-scale)` — so it is in the
+     sheet's own units, while the car's share is a fact about the SCREEN. Hence
+     `100 * var(--vwz)` for the viewport in own units and `320px / --ui-scale`
+     for the car's visual reserve expressed in them. The old ladder was written
+     entirely in own units, so at UI SIZE 150% on a 1000px viewport it asked for
+     500 own px = 750 VISUAL, leaving the car 242px and the option list one row.
+     Same ladder, same numbers, three different answers depending on a zoom it
+     could not see.
+
+     Measured with this formula (viewport, scale -> car px): 1440/1.0 -> 1020,
+     1440/1.5 -> 810, 1000/1.15 -> 517, 1000/1.5 -> 370, 852/1.15 -> 369. The
+     410px floor is what keeps `--pair-at` (400 + 2px border) satisfied so the
+     rail never collapses into the stacked grid; `min(100%)` hands a portrait
+     phone the full width, which is the right answer there and what it already
+     did. */
+  --cs-sheet-w: min(100%, clamp(410px, calc(100 * var(--vwz) - 320px / var(--ui-scale)), 420px));
+}
+/* Livery editor: the player is judging spine / logo paint on the car. Give the
+   crown more of the left gap (420 visual px reserved instead of 320) and thin
+   the panel so the cover shows through while the pills stay readable.
+   Floor stays at 410 so `--pair-at` (400 + 2px border) still holds — a 360–380
+   clamp collapsed the rail into the stacked grid on mid-width landscape. */
+#carsetup:has(.cs-liv-editor) {
+  --cs-sheet-w: min(100%, clamp(410px, calc(100 * var(--vwz) - 420px / var(--ui-scale)), 420px));
+}
+#carsetup:has(.cs-liv-editor) #cs-inner {
+  background: color-mix(in oklab, var(--panel) 78%, transparent);
+}
+@media (prefers-reduced-transparency: reduce) {
+  #carsetup:has(.cs-liv-editor) #cs-inner {
+    background: var(--panel);
+  }
+}
+/* AND THE HEIGHT AXIS, which this mode block reclaimed for the car but never
+   for the editor itself. MEASURED with the garage open on LIVERY and the paint
+   editor up, UI SIZE default:
+     852x393  head 84 + tabs 65 = 149px of chrome over a 142px editor pane
+     393x852  head 221 + tabs 58 = 279px of chrome over a 170px editor pane
+   In both the chrome above the editor is TALLER THAN THE EDITOR, which holds
+   4109 / 4901px of content — a paint job edited through a porthole. Portrait is
+   the worse one and gets no help today, because it classifies `data-density:
+   normal` (the sheet is 580px tall; it is the HEAD that is fat, not the sheet
+   that is short) so none of the compact-tier head trims below apply.
+   The three things hidden here are not merely low value while painting, they
+   are INERT:
+     - #cs-tabs picks a part CATEGORY, and category cannot change mid-edit; the
+       editor carries its own CANCEL and SAVE & FIT (js/garage/setup-sheet.js),
+       so this is not the way out of the editor and hiding it strands nobody.
+       It also takes the strip out of the focus order, which is correct — those
+       tabs do nothing while a draft is open.
+     - #cs-budget-wrap and #cs-stats-inner describe PARTS: cost against the cap,
+       and the aero/grip deltas a part would move. Paint spends no budget and
+       shifts no stat, so both read as a frozen readout for another screen.
+   Unconditional, like the width rule above it, and for the same reason: this is
+   a MODE, not a size. On a sheet with room to spare the reclaim is simply spent
+   on showing more of the editor, which is the screen's whole subject while the
+   draft is open. Everything returns the moment CANCEL or SAVE & FIT closes it.
+
+   `#cs-inner` is in these selectors for WEIGHT, not for reach — it changes no
+   match. The compact tier sets the strip with
+   `#cs-inner[data-pair][data-density][data-shape] #cs-tabs` (two ids, three
+   attributes); without the extra id this rule is two ids and one class and
+   SILENTLY LOSES to it, which is exactly how the first attempt here left the
+   65px strip on screen while the head trims took. Same trap the note further
+   down this file records for the container-query rules. */
+#carsetup:has(.cs-liv-editor) #cs-inner #cs-tabs,
+#carsetup:has(.cs-liv-editor) #cs-inner #cs-budget-wrap,
+#carsetup:has(.cs-liv-editor) #cs-inner #cs-stats-inner { display: none; }
+#cs-inner {
+  pointer-events: auto;
+  /* Never wider than the safe box; the formula above decides the rest. */
+  width: var(--cs-sheet-w);
+  /* OPAQUE CHROME. .sheet ships --panel (~12% see-through) so the live
+     turntable stays imagery — and the bay's NOR / driver wordmarks then
+     ghost through GARAGE + the team name. Carbon is the same token the
+     SOLID look already uses; GLASS (below) can still thin the body. */
+  background: var(--carbon);
+  isolation: isolate;
+}
+/* Head and foot stay opaque even if Appearance › GARAGE › GLASS thins the
+   card — title, budget and the dismiss bar must not composite over 3D type.
+   Color and image are SEPARATE properties: `background: var(--grad-head),
+   var(--carbon)` can fail to apply the color when --grad-head already holds
+   two layers, and `isolation: isolate` on that translucent wash then
+   composites the live WebGL canvas through BUDGET (LEC / Charles board). */
+#cs-inner > .sheet-head {
+  background-color: var(--carbon);
+  background-image: var(--grad-head);
+  z-index: 1;
+}
+#cs-inner > .sheet-foot {
+  background-color: var(--carbon);
+}
+/* ---------- portrait: split the OTHER way ---------- */
+/* A portrait phone has no width to give the car — `min(100%)` above hands the
+   panel the whole 393px and the car is left rendering behind an opaque sheet,
+   which is what the gallery shot showed: a sliver of orange behind the category
+   grid and nothing else. But portrait has height to spare, which is the one
+   axis the docked layout never uses. So dock to the TOP instead of the side and
+   give the car a band along the bottom.
+
+   `orientation`, not the sheet's own `data-shape`: shape is measured FROM the
+   sheet's box, and a rule that resizes the sheet would feed its own input —
+   62% height could flip it back to `wide` and oscillate. The viewport's
+   orientation is an outside fact and cannot loop. It is also the one question
+   here that `zoom` does not distort: portrait is portrait at every UI SIZE.
+
+   renderSetupPreview reads #cs-inner's live rect and shifts the frustum DOWN
+   when the gap is below rather than beside — the two halves of this have to
+   agree, so if you change the split here, that is the other end of it. */
+/* NO CAR BAND IN PORTRAIT — MEASURED, NOT ASSUMED. Docking to the top and
+   giving the car a strip along the bottom is the obviously right idea (portrait
+   has height and no width, and the frustum shift below already supports it),
+   and it does not fit. At the fit distance the car is ~29% of the frame tall,
+   so the band cannot be under ~30%; at 31% on a 393x852 phone the option list
+   measured ZERO fully-visible rows, and at 38% the header overflowed its own
+   grid track and clipped DONE. The head, the category grid and the foot have
+   already spent the height.
+
+   What paid for it: stacked categories are one horizontal strip (see #cs-tabs),
+   the same answer the lighting tuner uses. renderSetupPreview already shifts
+   the frustum down when the panel leaves room below.
+
+   Kept from the attempt, because it stands on its own: the stat block goes to
+   two columns in portrait. Four label+bar+number groups each need barely half
+   the width, and portrait's ~367px container sits under the 400px the container
+   query uses to add the second column — the right threshold for the option
+   list, the wrong one for these. */
+/* TALL-SHAPED GARAGE: stats block goes to two columns.
+   Uses data-shape="tall" (zoom-corrected, set by sheetshape.js) rather than
+   @media (orientation: portrait) which reads the viewport and is wrong at
+   non-100% UI SIZE — same fix already applied to #sel-inner and #rs-body.
+   Two IDs beat the single-ID base rule at the same source position. */
+#cs-inner[data-shape="tall"] #cs-stats-inner { grid-template-columns: 1fr 1fr; column-gap: calc(var(--gap) * 0.8); }
+#cs-inner[data-shape="tall"] #cs-stats-inner .cs-stat-row { min-width: 0; justify-content: space-between; }
+/* flex: 0 0 auto — do not shrink; the bar is hidden in this layout so there
+   is room for the full label text (CORNERING needs ~84px at --fs-micro). */
+#cs-inner[data-shape="tall"] #cs-stats-inner .cs-stat-label { width: auto; min-width: 0; flex: 0 0 auto; }
+#cs-inner[data-shape="tall"] #cs-stats-inner .cs-stat-bar-wrap { display: none; }
+#cs-inner[data-shape="tall"] #cs-stats-inner .cs-stat-val { flex: 0 0 auto; }
+
+/* ---------- header ---------- */
+/* .sheet-head is a space-between row; the setup header is a stack of three
+   bands (title / budget / stats) that the container query below folds into two
+   rows once there is width for it. */
+#cs-header {
+  display: flex; flex-flow: column nowrap; align-items: stretch; justify-content: flex-start;
+  gap: calc(var(--gap) * 0.6);
+}
+#cs-titlebar { display: flex; align-items: center; gap: calc(var(--gap) * 0.8); flex-wrap: wrap; min-width: 0; }
+#cs-titlebar h2 { margin: 0; letter-spacing: var(--ls-5); color: var(--text); }
+#cs-team {
+  font-size: var(--label); font-weight: 800; font-style: italic; letter-spacing: var(--ls-4);
+  color: var(--steel);
+}
+
+/* ---------- budget ---------- */
+#cs-budget-wrap { display: flex; flex-direction: column; gap: calc(var(--gap) * 0.4); min-width: 0; }
+/* A METER, not a hairline. At 6px on a 10%-white track this was invisible —
+   the one number on the screen that constrains every choice you make and it
+   read as a divider. Taller, with a recessed track (inset shadow, the same
+   language the pressed buttons use), a lit lip on the fill and a bloom in the
+   fill's own colour so a nearly-spent budget glows at you. */
+#cs-budget-bar {
+  height: 10px;
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: var(--r-xs); overflow: hidden;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.6), inset 0 -1px 0 rgba(255, 255, 255, 0.06);
+}
+#cs-budget-fill {
+  height: 100%; width: 100%;
+  background: linear-gradient(90deg in oklab, var(--red-fill), #ff5a3c);
+  border-radius: var(--r-xs); transform-origin: left;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 0 12px color-mix(in srgb, var(--red) 45%, transparent);
+  transition: transform 0.22s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+#cs-budget-row { display: flex; align-items: center; justify-content: space-between; gap: calc(var(--gap) * 0.8); }
+#cs-budget {
+  font-size: var(--label); letter-spacing: var(--ls-3); color: var(--dim); min-width: 0;
+}
+#cs-budget.tight { color: var(--spark); }
+#cs-budget.over  { color: var(--red); }
+#cs-budget.unlimited { color: #0c8; }
+.cs-unlimited-btn {
+  flex: 0 0 auto; width: auto; margin: 0;
+  font-size: var(--fs-micro); font-weight: 800; letter-spacing: var(--ls-4);
+  padding: 4px 10px; border-radius: var(--r-sm);
+  background: var(--plate); color: var(--dim);
+  border: 1px solid var(--card-line);
+}
+.cs-unlimited-btn.on {
+  background: rgba(0,204,136,0.18); color: #0c8;
+  border-color: rgba(0,204,136,0.4);
+}
+
+/* ---------- stat bars ---------- */
+#cs-stats-inner {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--card-line); border-radius: var(--r-md);
+  padding: calc(var(--gap) * 0.5) calc(var(--gap) * 1.1);
+  /* ONE column is the floor; the container query below adds the second when the
+     panel is wide enough for two label+bar+number groups to still read. */
+  display: grid; grid-template-columns: 1fr;
+  gap: calc(var(--gap) * 0.35) calc(var(--gap) * 1.6);
+}
+.cs-stat-row {
+  display: flex; align-items: center; gap: calc(var(--gap) * 0.8); margin: 0;
+  font-size: var(--label); letter-spacing: var(--ls-4); color: var(--dim);
+  min-height: 18px;
+}
+.cs-stat-label { width: 84px; flex-shrink: 0; }
+.cs-stat-bar-wrap {
+  flex: 1 1 auto; min-width: 0; height: 10px; background: var(--plate-hover);
+  border-radius: var(--r-sm); overflow: hidden; position: relative;
+}
+.cs-stat-base {
+  position: absolute; left: 0; top: 0; height: 100%;
+  background: rgba(255,255,255,0.32); border-radius: var(--r-sm);
+}
+.cs-stat-boost {
+  position: absolute; top: 0; height: 100%; background: var(--red); opacity: 0.92;
+}
+.cs-stat-boost.penalty { background: var(--spark); }
+.cs-stat-val {
+  width: 30px; flex-shrink: 0; text-align: right;
+  font-size: var(--fs-2); font-weight: 700; color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.cs-stat-val.up { color: #4df; }
+.cs-stat-val.down { color: var(--spark); }
+
+/* ---------- body: category pane + option pane ---------- */
+/* STACKED: one horizontal category strip + one options scroller.
+   A wrapping grid with max-height: 48% plus .pane overflow-y:auto made the
+   tabs a second vertical catalogue next to #cs-options — two nested
+   scrollers on every stacked sheet. The strip used to live only inside
+   `@media (orientation: portrait)`, so a landscape stacked phone kept the
+   grid. Keyed on `data-pair`, not orientation or viewport height.
+   Gated on `:not([data-pair="on"])` because this is the STACKED layout, and an
+   ID rule (1,0,0) would otherwise beat `.pane-pair[data-pair="on"] > .sheet-body`
+   (0,3,0) and keep the body a flex column while the sheet was already laid out
+   as two grid columns — measured: the rail rendered 402px wide inside a 115px
+   track and the option list came out 10px tall. `:not(... "on")` rather than
+   `[data-pair="off"]` so the stack is also what an unmeasured sheet gets. */
+#cs-inner:not([data-pair="on"]) > #cs-body {
+  display: flex; flex-direction: column;
+  gap: var(--gap); min-height: 0;
+  overflow: hidden;
+}
+/* The ONE spacing in this stack the compact tier never trimmed. Everything else
+   between the sheet edge and #cs-options has a compact override — head padding,
+   the budget bar, the stat block, the tab rows, the foot padding — and each is
+   documented in this file as measured. This gap was simply missed: on a 852x393
+   phone #cs-body is 165 own px of which #cs-options gets 94, so 4px back is
+   ~4% more option list for no risk, since it only separates the tab strip from
+   the list below it. The big levers here are all closed and say so in their own
+   comments; this is what was left. */
+#cs-inner:not([data-pair="on"])[data-density="compact"] > #cs-body {
+  gap: calc(var(--gap) * 0.5);
+}
+#cs-tabs {
+  /* Two named horizontal tiers: performance first, finishing/setup second.
+     Each row owns its sideways overflow; #cs-options owns vertical scrolling. */
+  flex: 0 0 auto; min-height: 0; max-height: none;
+  display: grid; align-items: stretch; align-content: start;
+  gap: calc(var(--gap) * 0.5);
+  overflow: hidden;
+}
+#cs-tabs .cs-tab-row {
+  min-width: 0;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: calc(var(--gap) * 0.5);
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain; touch-action: pan-x;
+  scrollbar-width: none; scrollbar-gutter: auto;
+  /* SNAP + PEEK. Without snap, a category parks mid-glyph at the trailing
+     edge (390×844: SUSP 53/80 painted, BRAKES at 0 wide) and ScrollFade's
+     sf-r alone does not read as "more this way". Mandatory x + start align
+     matches the compact #cs-tabs strip; 24px end padding is the minimum
+     leading edge of the next tab that must stay visible (UI Fit). */
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline-end: calc(var(--gap) * 2);
+}
+#cs-tabs .cs-tab-row::-webkit-scrollbar { display: none; }
+/* Trailing spacer: last tab can snap fully in; also keeps ≥24px of empty
+   track after the final category so End does not jam under the fade. */
+#cs-tabs .cs-tab-row::after {
+  content: "";
+  flex: 0 0 calc(var(--gap) * 2);
+  scroll-snap-align: none;
+}
+#cs-inner:not([data-pair="on"]) #cs-tabs .cs-tab {
+  flex: 0 0 auto; white-space: nowrap;
+  scroll-snap-align: start;
+  scroll-snap-stop: normal;
+}
+/* PLAY-SHAPE GARAGE (compact, stacked, short LANDSCAPE only): a one-line head
+   with CLOSE GARAGE / BACK+DONE in the header row's trailing column, then ONE
+   full-width pan-x category strip, then the parts list. MEASURED (852×344,
+   2026-10-07): placing .sheet-foot beside #cs-tabs on row 2 left the strip
+   ~207px — only ~3 of 15 tabs visible without scrolling; the auto column
+   beside the strip was mostly dead space once exit=one shows a single dismiss.
+   Row 1 is already `minmax(0,1fr) auto`: the head shares the line with FREE
+   BUILD, so the foot rides column 2 row 1 and #cs-tabs spans 1 / -1 on row 2.
+   Gated on `orientation: landscape` as well as `:not([data-shape="tall"])`:
+   a 70% portrait sheet can read shape=wide (wider than tall — comment near the
+   portrait --compact-at), and without the orientation gate the #cs-body
+   `display: contents` + header-foot grid would fire on portrait. Train Desk
+   job 112998862430 failed tabs.count at 390×844; live dump there is
+   tall/normal (play-shape off, 15 tabs) — the zero was the openSetup rAF race
+   (spec wait). The landscape gate is the belt so a shape misread cannot apply
+   play-shape in portrait. Tab order unchanged (foot stays last in the DOM). */
+@media (orientation: landscape) {
+  #cs-inner:not([data-pair="on"])[data-density="compact"]:not([data-shape="tall"]) {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    row-gap: calc(var(--gap) * 0.5);
+  }
+  #cs-inner:not([data-pair="on"])[data-density="compact"]:not([data-shape="tall"]) > .sheet-head { grid-column: 1; grid-row: 1; min-width: 0; }
+  #cs-inner:not([data-pair="on"])[data-density="compact"]:not([data-shape="tall"]) > #cs-body { display: contents; }
+  #cs-inner:not([data-pair="on"])[data-density="compact"]:not([data-shape="tall"]) #cs-tabs {
+    grid-column: 1 / -1; grid-row: 2;
+    padding-inline: var(--pad);
+    scroll-padding-inline: var(--pad);
+  }
+}
+/* THE ONE STRIP IS EVERY STACKED COMPACT SHEET'S, portrait included; only the
+   landscape grid placement above is play-shape's. MEASURED (layout-audit,
+   ios-iphone-portrait 393x659, 2026-10-05, on 42cb42fbf): the tall garage
+   kept two tab rows of two-line tabs and a roomy head, and #cs-options was a
+   62 px box over 2832 px (50.7 screens). With the portrait --compact-at (the
+   orientation block near the end) the portrait phone takes the compact head and this one 52-tall strip, and the
+   list gets ~280 own. Each tab is floored at 52 painted in BOTH axes: ERS and
+   FUEL measured 44 and 51 wide in the landscape strip on 42cb42fbf.
+
+   ALSO tall+stacked at NORMAL density (390×844 roomy portrait): two named
+   rows still cost 124px and left #cs-options at 145px — TEAM's DRIVER label
+   sat on CLOSE (y≈475 vs y≈518). Same strip, density still owns head chrome. */
+#cs-inner:not([data-pair="on"])[data-density="compact"] #cs-tabs,
+#cs-inner:not([data-pair="on"])[data-shape="tall"] #cs-tabs {
+  display: flex; flex-wrap: nowrap; align-items: stretch;
+  gap: calc(var(--gap) * 0.5);
+  max-height: none; min-width: 0;
+  padding: 0;
+  overflow-x: auto; overflow-y: hidden;
+  overscroll-behavior-x: contain; touch-action: pan-x;
+  scrollbar-width: none; scrollbar-gutter: auto;
+  /* SNAP EACH CATEGORY. Compact (and tall stacked) flattens both .cs-tab-row
+     into this one scroller (display: contents). Without snap, mid-strip
+     labels park half-clipped at the right edge beside BACK — measured
+     Pages/live ios-iphone-landscape-safari 852×344 compact LIVERY, 2026-10-05
+     (AERO right past #cs-tabs client edge). MWG css-layout / scroll-snap:
+     mandatory x + align start. ScrollFade (#cs-tabs in SEL) paints sf-l /
+     sf-r for the "more this way" edge (scrollability-affordance-hints). */
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline: var(--pad);
+  scroll-padding-inline-end: max(calc(var(--gap) * 2), var(--pad));
+}
+#cs-inner:not([data-pair="on"])[data-density="compact"] #cs-tabs::-webkit-scrollbar,
+#cs-inner:not([data-pair="on"])[data-shape="tall"] #cs-tabs::-webkit-scrollbar { display: none; }
+#cs-inner:not([data-pair="on"])[data-density="compact"] #cs-tabs .cs-tab-row,
+#cs-inner:not([data-pair="on"])[data-shape="tall"] #cs-tabs .cs-tab-row { display: contents; }
+/* Rows are display:contents — their ::after spacer never boxes. Put the
+   peek pad on the strip that actually scrolls. */
+#cs-inner:not([data-pair="on"])[data-density="compact"] #cs-tabs::after,
+#cs-inner:not([data-pair="on"])[data-shape="tall"] #cs-tabs::after {
+  content: "";
+  flex: 0 0 calc(var(--gap) * 2);
+  scroll-snap-align: none;
+}
+#cs-inner:not([data-pair="on"])[data-density="compact"] #cs-tabs .cs-tab,
+#cs-inner:not([data-pair="on"])[data-shape="tall"] #cs-tabs .cs-tab {
+  /* TAP FLOOR — never crush. Live Pages (v=13789 / carsetup 0450d166aebf)
+     still shipped the pre-#924 short-landscape 2-row grid sized from the
+     WCAG-min rung (+4px) with category tabs zeroing min-height, painting
+     fifteen 30.5px tabs against a garage --tap of 52. Compact density must
+     wrap/scroll instead of zeroing the floor (MWG accessibility /
+     size-aware-styling / fluid-scaling). Prefer logical min-block-size /
+     min-inline-size so a writing-mode flip cannot reintroduce a short hit
+     target; keep the physical min-* pair for engines that resolve
+     --tap-paint only there. Livery ⧉ chips (.cs-liv-edit) stay on
+     --chip-h / the WCAG-min rung — not this rule. */
+  flex: 0 0 auto; white-space: nowrap;
+  min-inline-size: var(--tap-paint, var(--tap));
+  min-block-size: var(--tap-paint, var(--tap));
+  min-width: var(--tap-paint, var(--tap));
+  min-height: var(--tap-paint, var(--tap));
+  padding: 0 calc(var(--gap) * 0.9);
+  justify-content: center; align-items: center; text-align: center;
+  scroll-snap-align: start;
+  scroll-snap-stop: normal;
+}
+@media (orientation: landscape) {
+  #cs-inner:not([data-pair="on"])[data-density="compact"]:not([data-shape="tall"]) > .sheet-foot {
+    grid-column: 2; grid-row: 1;
+    align-self: center;
+    display: flex; flex-direction: column; flex-wrap: nowrap;
+    gap: calc(var(--gap) * 0.45);
+    padding: 0 var(--pad) 0 calc(var(--gap) * 0.5);
+    background: none;
+    min-width: 0;
+    justify-self: end;
+    justify-content: center;
+  }
+  #cs-inner:not([data-pair="on"])[data-density="compact"]:not([data-shape="tall"]) > .sheet-foot::before { display: none; }
+  #cs-inner:not([data-pair="on"])[data-density="compact"]:not([data-shape="tall"]) > .sheet-foot > .bigbtn {
+    padding-inline: calc(var(--gap) * 0.65);
+    min-width: var(--tap-paint, var(--tap));
+    min-height: var(--tap-paint, var(--tap));
+    min-block-size: var(--tap-paint, var(--tap));
+    max-width: 9em;
+  }
+  #cs-inner:not([data-pair="on"])[data-density="compact"]:not([data-shape="tall"]) #cs-options {
+    grid-column: 1 / -1; grid-row: 3;
+    padding: 0 var(--pad) calc(var(--pad) * 0.25);
+  }
+  /* ...AND THE HEAD IS ONE LINE. Same measurement: the head was two lines, the
+     title over a budget row that was itself readout-over-FREE-BUILD, 76 own of
+     the 281. The title stacks GARAGE over the team name in a narrow column, the
+     readout wraps to two lines beside FREE BUILD instead of above it, and the
+     row is as tall as the FREE BUILD chip (~52 own with padding). The budget row
+     asks for 5.5 chips of width, so a team name too long for the title column
+     still wraps the row underneath, as before — nothing truncates.
+     FOLDED WITH #919 (d5eb31183): its compact-tier `#cs-budget-row` nowrap and
+     `#cs-budget` flex: 1 1 0 / min-width: 0 (end of this file, every compact
+     garage) are the readout-beside-FREE-BUILD half of this, so those
+     declarations are no longer repeated here; this tier adds only the title
+     column, the row's width basis and the readout's leading. */
+  #cs-inner:not([data-pair="on"])[data-density="compact"]:not([data-shape="tall"]) #cs-header { flex-flow: row wrap; align-items: center; }
+  /* Keep the budget row on that same horizontal flex axis below 400px too.
+     Otherwise its width basis becomes height inside the column wrapper. */
+  #cs-inner:not([data-pair="on"])[data-density="compact"]:not([data-shape="tall"]) #cs-budget-wrap { display: contents; }
+  #cs-inner:not([data-pair="on"])[data-density="compact"]:not([data-shape="tall"]) #cs-titlebar {
+    flex: 0 1 auto; flex-direction: column; align-items: flex-start; gap: 0;
+    min-width: 0; max-width: calc(var(--label) * 7.5);
+  }
+  #cs-inner:not([data-pair="on"])[data-density="compact"]:not([data-shape="tall"]) #cs-titlebar > * { line-height: 1.15; max-width: 100%; overflow-wrap: anywhere; }
+  #cs-inner:not([data-pair="on"])[data-density="compact"]:not([data-shape="tall"]) #cs-budget-row { flex: 1 1 calc(var(--chip-h) * 5.5); min-width: 0; }
+  #cs-inner:not([data-pair="on"])[data-density="compact"]:not([data-shape="tall"]) #cs-budget { line-height: 1.2; }
+}
+#cs-options {
+  flex: 1 1 auto; min-height: 0;
+  display: flex; flex-direction: column; gap: calc(var(--gap) * 0.5);
+}
+/* TALL STACKED: the options pane is the catalogue — keep flex:1 and a floor
+   tall enough for the TEAM card + DRIVER control above a compact foot.
+   Measured 390×844 before the one-strip: options h=145 / scrollH=648, DRIVER
+   label at y=475 against CLOSE at y=518. Floor = team card (~tap*1.6) +
+   label + driver chip (--tap-paint) + gaps. */
+#cs-inner:not([data-pair="on"])[data-shape="tall"] #cs-options {
+  flex: 1 1 auto;
+  min-height: calc(var(--tap-paint, var(--tap)) * 3.25);
+}
+#cs-inner:not([data-pair="on"])[data-shape="tall"] > .sheet-foot {
+  flex: 0 0 auto;
+  padding-top: calc(var(--gap) * 0.25);
+  padding-bottom: calc(var(--gap) * 0.25);
+}
+#cs-inner:not([data-pair="on"])[data-shape="tall"] > .sheet-foot > .bigbtn {
+  min-height: var(--tap-paint, var(--tap));
+  min-block-size: var(--tap-paint, var(--tap));
+}
+/* Rows must NOT shrink. As flex children they default to flex-shrink:1, so the
+   moment the list was taller than the pane every row was squeezed a few pixels
+   and its description printed straight over the row below — the option list
+   read as overlapping garbage exactly when it was long enough to matter. */
+#cs-options > * { flex: 0 0 auto; }
+
+/* ---------- TEAM & DRIVER tab ----------
+   The identity controls reuse the select screen's .team-card / .sel-chip /
+   .sel-label / .sel-edit classes (css/menus.css) so the two screens cannot
+   drift apart. Only the vertical rhythm is respecified: #cs-options is a flex
+   column, so the two rules below own the spacing outright. (This used to say
+   the select screen's `#sel-left .sel-label + *` rule "does not reach in here";
+   both that rule and #sel-left were removed with the identity column, so there
+   is nothing left to be scoped away from.) */
+#cs-options > .sel-label:not(:first-child) { margin-top: calc(var(--gap) * 0.6); }
+#cs-options > .sel-edit-row { margin-top: calc(var(--gap) * 0.4); }
+/* UI Fit (layout-audit ios-iphone-landscape-safari@100): SAVE / LOAD / RESET
+   GARAGE FILE are plain <button>s in #cs-garage-file (no .sel-edit), so the
+   components.css tap / chip floors never reach them — painted h=46 against
+   tapFloor 52 (3× tapSoft). Floor at --tap-paint in this sheet only. */
+#cs-garage-file > button {
+  min-height: var(--tap-paint);
+  min-block-size: var(--tap-paint);
+}
+/* The garage team card is the only .team-card in a ~260px option pane; the
+   select-screen ellipsis ("MCL · Mercedes en…") hides the engine. Wrap the
+   name/sub spans (not a second .tm-name/.tm-sub definition — that coupling
+   would have to be listed in COMPONENTS.md). */
+#cs-team-card span {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- category tabs ---------- */
+.cs-tab {
+  display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px;
+  /* --tap-min, not 0: this rule shares @layer components and specificity with
+     the tap-target floor in css/components.css and loads later, so a 0 here
+     silently cancelled that WCAG 2.5.8 width floor. */
+  padding: 6px 10px; border-radius: var(--r-md); min-width: var(--tap-min); overflow: hidden;
+  background: var(--plate); border: 1px solid var(--plate-line);
+  cursor: pointer; text-align: left;
+}
+.cs-tab-lbl, .cs-tab-cur {
+  max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  /* Must NOT shrink — the same trap as the option rows below. As flex children
+     they default to flex-shrink:1, so once the rail was shorter than its tabs
+     each line was squeezed a few px and its text clipped inside .cs-tab's
+     overflow:hidden (15px of line box in a 12px slot). A stated line-height
+     keeps the box the size the glyphs actually need. */
+  flex: 0 0 auto; line-height: 1.35;
+}
+/* Labels stay one line; current-part line keeps ellipsis.
+   Tracking cut from 0.12em → 0 (measured @14px: 0.12→97px, 0.02→83px,
+   0→81px for "SUSPENSION"). Pair rail floor 120px + zero tracking clears
+   the 1px ellipsis left at 0.02em inside tab padding. */
+.cs-tab-lbl {
+  font-size: var(--fs-micro); font-weight: 800; letter-spacing: 0; color: var(--text);
+}
+.cs-tab-cur { font-size: var(--fs-micro); font-weight: 600; color: color-mix(in oklab, var(--text) 40%, transparent); }
+.cs-tab.upgraded .cs-tab-lbl { color: #4df; }
+.cs-tab.upgraded .cs-tab-cur { color: rgba(80,210,255,0.7); }
+.cs-tab.active { background: var(--plate-on); border-color: var(--red); }
+.cs-tab.active .cs-tab-lbl { color: var(--text); }
+.cs-tab.active .cs-tab-cur { color: color-mix(in oklab, var(--text) 72%, transparent); }
+/* ENGINE subtitle (Pages recheck 2026-10-08): a FACTORY power unit keeps its
+   full name ("Ferrari 066/12", "Ford Powertrains") — no works prefix for
+   tabSub() to drop — and the 1280 rail ellipsised it to "Ferrari 066…". The
+   ENGINE line may take a second line instead; two at most, then ellipsis. */
+.cs-tab[data-cs-cat="engine"] .cs-tab-cur {
+  white-space: normal; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
+}
+
+/* ---------- option rows ---------- */
+.cs-opt {
+  display: flex; align-items: flex-start; gap: calc(var(--gap) * 0.8); text-align: left; width: 100%;
+  padding: 8px 11px; border-radius: var(--r-md);
+  background: var(--plate); border: 1px solid var(--plate-line);
+  cursor: pointer;
+}
+.cs-opt-dot {
+  flex: 0 0 auto; width: 15px; height: 15px; margin-top: 2px; border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.28); box-sizing: border-box;
+}
+/* min-width:0 alone is not enough — a long badge string is an unbreakable
+   inline-block, and #cs-options is overflow-x:hidden, so it would be silently
+   cut off at the panel edge instead of wrapping. */
+.cs-opt-main { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.cs-opt-name { font-size: var(--fs-2); font-weight: 700; color: var(--text); }
+.cs-opt-deltas { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
+.cs-delta {
+  font-size: var(--fs-micro); font-weight: 800; letter-spacing: var(--ls-2);
+  padding: 1px 5px; border-radius: var(--r-xs);
+}
+.cs-delta.up { background: rgba(80,210,255,0.16); color: #4df; }
+.cs-delta.down { background: color-mix(in oklab, var(--spark) 16%, transparent); color: var(--spark); }
+.cs-opt-desc { font-size: var(--fs-2); color: var(--dim); line-height: 1.35; margin-top: 6px; }
+.cs-opt-cost {
+  flex: 0 0 auto; align-self: center;
+  font-size: var(--fs-micro); font-weight: 700; color: var(--dim);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.cs-opt-cost.free { color: rgba(255,255,255,0.3); font-weight: 600; }
+.cs-opt.active {
+  background: var(--plate-on); border-color: var(--red);
+}
+.cs-opt.active .cs-opt-dot { border-color: var(--red); background: radial-gradient(circle, #fff 0 3px, var(--red) 4px); }
+.cs-opt.active .cs-opt-cost { color: #fff; }
+.cs-opt.over-budget { opacity: 0.5; }
+/* Unscoped from .cs-opt: the quali sheet shakes TO THE GRID when Escape is
+   pressed on a finished session (the old silent-dead-key), same "no" gesture
+   as an over-budget part. */
+.budget-reject { animation: cs-shake 0.32s ease; }
+@keyframes cs-shake {
+  0%,100% { transform: translateX(0); }
+  25%      { transform: translateX(-5px); }
+  75%      { transform: translateX(5px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .budget-reject { animation: none; }
+  #cs-budget-fill { transition: none; }
+}
+.cs-opt-tag {
+  display: inline-block; margin-left: 7px; vertical-align: middle;
+  font-size: var(--fs-micro); font-weight: 800; letter-spacing: var(--ls-4);
+  background: rgba(255,200,40,0.18); color: #f5c842;
+  border-radius: var(--r-xs); padding: 1px 5px;
+}
+.cs-opt.exclusive { border-color: rgba(255,200,60,0.4); }
+.cs-opt.exclusive.active {
+  background: rgba(184,150,10,0.22); border-color: #c9a80e;
+  box-shadow: 0 2px 16px rgba(200,160,10,0.3);
+}
+.cs-opt.exclusive.active .cs-opt-dot { border-color: #e6c02a; background: radial-gradient(circle,#fff 0 3px,#e6c02a 4px); }
+
+/* ---------- R&D-locked rows (career) ---------- */
+/* Not-yet-yours, but still a row you read and press: this is the catalogue of what
+   the car could become, so it must stay legible. Hence a RECESSED surface (--surf-1
+   under --edge, the same language the pressed buttons use) rather than the flat
+   opacity fade .over-budget gets — dimming a locked row the same way would make
+   "you have not bought this" and "this will not fit" indistinguishable, and they
+   are the two different refusals the click can give you. Full opacity, dropped
+   contrast: the name still reads, the stat chips still compare. */
+.cs-opt.locked {
+  background: var(--surf-1);
+  border-color: rgba(255,255,255,0.06);
+  box-shadow: var(--edge);
+}
+.cs-opt.locked .cs-opt-name { color: var(--dim); }
+.cs-opt.locked .cs-opt-dot { border-style: dashed; border-color: var(--plate-line); }
+/* The pill is a PRICE tag, not the spec number the other rows carry there, so it
+   gets a chip shape and the buy colour instead of plain dim text. */
+.cs-opt-cost.research {
+  font-size: var(--fs-micro); font-weight: 800; letter-spacing: var(--ls-3);
+  padding: 3px 7px; border-radius: var(--r-sm);
+  background: color-mix(in oklab, var(--red) 18%, transparent);
+  border: 1px solid color-mix(in oklab, var(--red) 45%, transparent);
+  color: color-mix(in oklab, var(--red) 55%, #fff);
+}
+
+/* ---------- livery rows ---------- */
+/* paint-job swatch (two-tone, optional centre racing stripe) in the LIVERY tab */
+.cs-liv-swatch {
+  flex: 0 0 auto; width: 38px; height: 24px; border-radius: var(--r-sm); align-self: center;
+  border: 1px solid rgba(255,255,255,0.25);
+  box-shadow: inset 0 0 6px rgba(0,0,0,0.35);
+  position: relative; overflow: hidden;
+}
+.cs-liv .cs-opt-main { align-self: center; }
+.cs-liv-stripe {
+  position: absolute; top: 0; bottom: 0; left: 50%; transform: translateX(-50%);
+  width: 7px; border-radius: var(--r-xs); box-shadow: 0 0 2px rgba(0,0,0,0.5);
+}
+/* ＋ CREATE row: dashed "add" affordance */
+.cs-liv-plus {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; font-weight: 700; color: rgba(255,255,255,0.6);
+  background: var(--plate); border-style: dashed;
+}
+.cs-liv-create {
+  border-style: dashed;
+  border-color: color-mix(in oklab, var(--spark) 32%, var(--card-line));
+}
+.cs-liv-row { display: flex; align-items: stretch; gap: calc(var(--gap) * 0.5); width: 100%; }
+.cs-liv-row > .cs-liv { flex: 1 1 auto; min-width: 0; width: auto; }
+
+/* SWATCH GRID — ~70 full-width text rows was the deepest cell in the 2026-08
+   menu survey (~86 screens at 150% landscape). A denser text list made it
+   worse; a swatch grid with the name in aria-label/title is the measured win.
+   CREATE stays full-width; edit/del float over the swatch. */
+/* UI Fit r6: Garage LIVERY tap floor + finish tags */
+#cs-options.cs-liv-grid {
+  display: grid;
+  /* Two house-tap chips sit on one card (copy, or edit+delete on a custom
+     row). A 72px auto-fill floor packed 26×26 --tap-min chips and clipped
+     SATIN/CHROME (ui-fit r6: 82 soft taps / 20 trunc at 390×844). Floor the
+     column at 2× --tap so both chips and the finish tag fit; min(..., 100%)
+     keeps the #sel-teams rule (a bare px floor is also a ceiling). */
+  grid-template-columns: repeat(auto-fill, minmax(min(max(72px, calc(var(--tap) * 2)), 100%), 1fr));
+  gap: 6px;
+  align-content: start;
+}
+#cs-options.cs-liv-grid > .cs-liv-create {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+#cs-options.cs-liv-grid > .cs-liv-row {
+  position: relative;
+  width: auto;
+  flex-direction: column;
+  gap: 0;
+  /* ~60-70 cards x 5-6 boxes and ~95% off screen at 200%: skip layout+paint
+     for the off-screen rows. BLOCK axis only — a length here would also become
+     the min-content width and blow the sheet's inline size (the exact failure
+     .sheet-body's min-width:0 comment records). 86px is exact, not averaged:
+     6+52+4+2lh(2x16.1)+4 with the name reserved at two lines below, so the
+     estimate equals the real height and scrollHeight never breathes under the
+     scroll-fade thumb. Keyboard End/Home reach past the render boundary via
+     menunav's checkVisibility scope; layout-audit neutralizes skipping at boot
+     so the tap sweep still sees every card. */
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 98px;
+}
+#cs-options.cs-liv-grid > .cs-liv-row > .cs-liv {
+  flex: none;
+  width: 100%;
+  min-height: var(--chip-h);
+  min-width: 0;
+  padding: 6px 4px 4px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+}
+#cs-options.cs-liv-grid .cs-opt-dot,
+#cs-options.cs-liv-grid .cs-opt-cost { display: none; }
+#cs-options.cs-liv-grid > .cs-liv-row .cs-liv-swatch {
+  /* Fill the tap-wide CARD so SATIN/CHROME paint in full (was 56px, CHROME
+     measured scrollWidth 80). Not the CREATE row — that swatch stays a plus
+     chip. Height stays the house tap, not a 52px literal. */
+  width: 100%; height: var(--tap); align-self: center;
+}
+#cs-options.cs-liv-grid .cs-liv-swatch canvas {
+  display: block; width: 100%; height: 100%;
+}
+#cs-options.cs-liv-grid .cs-opt-main {
+  width: 100%;
+  min-width: 0;
+  align-self: stretch;
+}
+#cs-options.cs-liv-grid .cs-opt-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: var(--fs-micro);
+  line-height: 1.15;
+  /* Reserve both clamp lines even for one-line names: uniform card height is
+     what makes the row's contain-intrinsic-block-size exact (see .cs-liv-row). */
+  min-height: 2lh;
+  text-align: center;
+  overflow: hidden;
+  max-width: 100%;
+  /* Wrap, do not ellipsis on one line: the name IS the information
+     (measured 2026-08-18: "Stealth Papaya" needed 91px in a 69px cell). */
+}
+#cs-options.cs-liv-grid .cs-opt-tag {
+  display: inline-block;
+  position: absolute;
+  bottom: 1px;
+  left: 1px;
+  margin-left: 0;
+  pointer-events: none;
+  z-index: 1;
+  /* UI Fit r6: do not ellipsis SATIN/CHROME. The card is now ≥ 2× --tap and
+     the swatch is 100% of it, so --fs-micro + --ls-1 fit without a sub-floor
+     font. max-width/ellipsis was the 20-trunc carve (390×844). Padding stays
+     the inherited .cs-opt-tag token-adjacent 1px 5px (no new rawSpacing). */
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
+  letter-spacing: var(--ls-1);
+}
+#cs-options.cs-liv-grid .cs-liv-swatch .cs-opt-tag + .cs-opt-tag {
+  left: auto;
+  right: 1px;
+}
+#cs-options.cs-liv-grid .cs-liv-edit,
+#cs-options.cs-liv-grid .cs-liv-del {
+  position: absolute;
+  top: 2px;
+  /* UI Fit r6: house --tap / --tap-paint floor (survey rank 1). The old
+     --tap-min carve painted 26×26 vs body --tap 52 (82 soft taps at 390×844).
+     Content box stays --tap-min so the glyph/fill stay compact; padding is
+     the hit slop that lifts getBoundingClientRect to max(--tap, --tap-paint)
+     (52 on touch, 44 with a mouse). */
+  box-sizing: content-box;
+  width: var(--tap-min); height: var(--tap-min);
+  min-width: var(--tap-min); min-height: var(--tap-min);
+  padding: calc((max(var(--tap), var(--tap-paint)) - var(--tap-min)) / 2);
+  background-clip: content-box;
+  font-size: var(--fs-micro);
+  z-index: 1;
+  opacity: 0.92;
+}
+#cs-options.cs-liv-grid .cs-liv-edit { right: 2px; }
+#cs-options.cs-liv-grid .cs-liv-del { left: 2px; }
+/* Armed = the career DELETE? treatment (css/career.css): one-of-a-kind paint
+   now takes two presses to destroy, and the armed press must read as danger. */
+.cs-liv-del.armed {
+  color: #fff; border-color: var(--red); background: var(--armed-fill);
+  opacity: 1;
+}
+@media (hover: hover) and (pointer: fine) {
+  #cs-options.cs-liv-grid .cs-liv-edit,
+  #cs-options.cs-liv-grid .cs-liv-del { opacity: 0; }
+  #cs-options.cs-liv-grid > .cs-liv-row:is(:hover, :focus-within) .cs-liv-edit,
+  #cs-options.cs-liv-grid > .cs-liv-row:is(:hover, :focus-within) .cs-liv-del { opacity: 1; }
+}
+/* Touch keeps the icons visible — no hover to reveal them. */
+body:not(.desktop) #cs-options.cs-liv-grid .cs-liv-edit,
+body:not(.desktop) #cs-options.cs-liv-grid .cs-liv-del { opacity: 0.95; }
+
+/* Edit / duplicate / delete affordances. These were 24x24 — half a thumb, and
+   sitting right next to the row that repaints the car, so a miss was expensive.
+   Sized off --chip-h like every other secondary control. */
+.cs-liv-del, .cs-liv-edit {
+  flex: 0 0 auto; align-self: center;
+  width: var(--chip-h); height: var(--chip-h); min-width: var(--chip-h); min-height: var(--chip-h);
+  border-radius: var(--r-md);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 700;
+  cursor: pointer; margin: 0; padding: 0;
+}
+.cs-liv-del {
+  color: var(--del-ink);
+  background: color-mix(in srgb, var(--del-fill) 10%, transparent); border: 1px solid color-mix(in srgb, var(--del-fill) 25%, transparent);
+}
+@media (hover: hover) and (pointer: fine) {
+  .cs-liv-del:hover { background: color-mix(in srgb, var(--del-fill) 22%, transparent); color: #fff; }
+}
+.cs-liv-del:active { background: color-mix(in srgb, var(--del-fill) 30%, transparent); color: #fff; }
+.cs-liv-edit {
+  color: var(--edit-ink);
+  background: color-mix(in srgb, var(--edit-fill) 10%, transparent); border: 1px solid color-mix(in srgb, var(--edit-fill) 28%, transparent);
+}
+@media (hover: hover) and (pointer: fine) {
+  .cs-liv-edit:hover { background: color-mix(in srgb, var(--edit-fill) 24%, transparent); color: #fff; }
+}
+.cs-liv-edit:active { background: color-mix(in srgb, var(--edit-fill) 32%, transparent); color: #fff; }
+.cs-liv-custom .cs-opt-tag { background: rgba(80,210,255,0.18); color: #4df; }
+
+/* ---------- inline livery creator ---------- */
+.cs-liv-editor { display: flex; flex-direction: column; gap: calc(var(--gap) * 0.7); padding: 2px; }
+.cs-liv-ed-head {
+  font-size: var(--label); font-weight: 800; letter-spacing: var(--ls-5); color: var(--dim);
+}
+.cs-liv-ed-prev {
+  width: 100%; height: 44px; border-radius: var(--r-md); align-self: stretch;
+}
+.cs-liv-ed-row { display: flex; align-items: center; gap: calc(var(--gap) * 0.8); min-width: 0; }
+/* Zone heading in the paint editor. The sheet carries twenty-three colour rows
+   and a flat run that long reads as one undifferentiated list, so the rows are
+   grouped by the surface they paint (BODY / ENGINE COVER / WINGS & TAIL / TEAM
+   MARK / COCKPIT). Inert by construction: role="presentation", no focus, no
+   pointer target — it changes the reading order and nothing else. Spans the
+   grid so a heading never shares a line with a row. */
+.cs-liv-ed-sec {
+  grid-column: 1 / -1; font-size: var(--fs-micro); font-weight: 800;
+  letter-spacing: var(--ls-4); color: var(--dim); opacity: 0.75;
+  padding-top: calc(var(--gap) * 0.6); border-bottom: 1px solid var(--plate-line);
+}
+.cs-liv-ed-sec:first-child { padding-top: 0; }
+.cs-liv-ed-lbl {
+  flex: 0 0 68px; font-size: var(--fs-micro); font-weight: 800; letter-spacing: var(--ls-4); color: var(--dim);
+}
+.cs-liv-ed-row input[type="color"] {
+  /* Same shape as the customize wells: floored height, literal width —
+     20.8px painted at UI SIZE 40% before the max(). */
+  flex: 0 0 auto; width: max(52px, var(--tap-min)); height: var(--chip-h); padding: 0; border-radius: var(--r-sm);
+  border: 1px solid var(--plate-line); background: none; cursor: pointer;
+}
+.cs-liv-ed-row input[type="color"].cs-liv-off { opacity: 0.35; }
+.cs-liv-ed-none {
+  flex: 0 0 auto; width: auto; margin: 0;
+  min-height: var(--chip-h); min-width: var(--chip-h);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: var(--fs-micro); font-weight: 800; letter-spacing: var(--ls-4);
+  padding: 4px 10px; border-radius: var(--r-sm);
+  background: var(--plate); color: var(--dim);
+  border: 1px solid var(--card-line);
+}
+/* FINISH row: three of the same pill buttons acting as one radio group, with the
+   chosen one lifted a step up the elevation ladder (same language as the custom
+   team's NONE toggles — a pressed toggle, not a stat gain).
+   The group WRAPS. It was one nowrap line with every pill at flex-basis 0, which
+   was fine for three finishes and wrong for the tail rows that reuse it: SPINE
+   TOP has eleven pills, and on a landscape phone each shrank to its --chip-h
+   minimum with "CHEVRON" and "WORDMARK" spilling over their neighbours and the
+   last pill sliced by the scroller's edge. A pill keeps its label's width and
+   grows to fill its line; rows that fit stay one line, the long ones take two.
+   flex-basis 0, not auto: the row itself wraps (for the palette strip), and at
+   basis auto an eleven-pill group measured as one long line, dropped under its
+   label and left the four-pill rows beside theirs — two layouts in one list. */
+.cs-liv-ed-finish { display: flex; flex-wrap: wrap; gap: 6px; flex: 1 1 0; min-width: 0; }
+.cs-liv-ed-finish .cs-liv-ed-none { flex: 1 1 auto; padding: 4px 8px; white-space: nowrap; }
+.cs-liv-ed-none.active {
+  background: var(--surf-3); color: var(--text); border-color: rgba(255,255,255,0.42);
+}
+/* A row whose part the draft does not have (FIN SHAPE none greys the four fin
+   rows) — the editor sets aria-disabled on the row and `disabled` on every
+   control in it; this only paints that state. Dimmed, not hidden: the row's
+   value survives, and seeing it greyed says WHY a badge stopped showing. */
+.cs-liv-ed-row[aria-disabled="true"] { opacity: 0.38; }
+.cs-liv-ed-row[aria-disabled="true"] button,
+.cs-liv-ed-row[aria-disabled="true"] input { cursor: not-allowed; }
+/* One dead pill inside a live row (SPINE TOP "wordmark" under the CLEAN
+   sponsor pack). Scoped to live rows so a pill in a greyed row is not dimmed
+   twice into invisibility. */
+.cs-liv-ed-row:not([aria-disabled="true"]) .cs-liv-ed-none:disabled { opacity: 0.38; cursor: not-allowed; }
+/* MATCHING PALETTE: the colours already used elsewhere in this paint job, so a
+   slot can take one EXACTLY instead of being eyeballed in the OS colour dialog.
+   The chips reuse .cs-liv-ed-none (same pill, same tap target, same active
+   ring) with the colour set inline — only the strip needed a class of its own.
+   It wraps because a busy livery can reach a dozen distinct colours. */
+/* Its OWN line, not the tail of the colour row: label + well + NONE already eat
+   the panel's width, so inline chips wrapped one-per-line and made every row
+   three deep. flex-basis 100% puts the strip under them with the full width to
+   wrap into, which holds a dozen colours in two lines. */
+.cs-liv-ed-row { flex-wrap: wrap; }
+.cs-liv-pal { display: flex; flex-wrap: wrap; gap: calc(var(--gap) * 0.5); flex: 1 0 100%; min-width: 0; }
+.cs-liv-pal:empty { display: none; }
+/* Square wells the size of the colour input's own chip, so a swatch and the
+   picker it fills read as the same control. The colour is set inline per chip;
+   the border is the only chrome, which keeps this free of colour literals. */
+.cs-liv-pal .cs-liv-ed-none {
+  min-width: var(--chip-h); width: var(--chip-h); padding: 0;
+}
+.cs-liv-ed-name {
+  flex: 1 1 auto; min-width: 0; min-height: var(--chip-h);
+  /* 16px, not --fs-2: iOS focused-input auto-zoom floor (see menus.css /
+     tuner.css input notes) — this is a typeable livery-name field. */
+  font-size: 16px; font-weight: 600; color: var(--text);
+  padding: 6px 9px; border-radius: var(--r-sm);
+  background: var(--plate); border: 1px solid var(--card-line);
+}
+.cs-liv-ed-btns { display: flex; gap: calc(var(--gap) * 0.7); margin-top: 2px; }
+.cs-liv-ed-cancel, .cs-liv-ed-save {
+  flex: 1 1 0; width: auto; margin: 0; min-height: var(--tap);
+  font-size: var(--fs-micro); font-weight: 800; letter-spacing: var(--ls-3);
+  padding: 9px 0; border-radius: var(--r-md); cursor: pointer;
+}
+.cs-liv-ed-cancel { background: var(--plate); color: var(--dim); border: 1px solid var(--card-line); }
+.cs-liv-ed-save { background: var(--red); color: #fff; border: 1px solid var(--red); }
+
+/* ---------- foot ---------- */
+/* BACK and DONE, centred in the pinned bar — and the bar is NARROW here, which
+   is the whole reason these two extra declarations exist.
+   (The note this rule used to carry said "DONE is the only action". That
+   stopped being true when BACK was added beside it, and the stale note is how
+   the bug below survived review: the rule still looks right if you believe it.)
+   Measured at 852x393 landscape, garage open: from UI SIZE 100 % upward the
+   pane-pair turns on and this foot drops into the LEFT RAIL, so its content
+   needs 161 px inside a 124 px box. Plain `center` splits that 37 px of
+   overflow across BOTH edges, and #cs-inner clips with overflow:hidden — so
+   BACK painted at 55 % with nothing to scroll to. At 80 % the pair is off, the
+   foot is 458 px wide, and it all fits, which is exactly why shrinking the UI
+   hid the defect instead of showing it.
+     safe center — fall back to flex-start the moment the content overflows, so
+       what is cut is the trailing edge (reachable by wrapping) and never the
+       leading one (not reachable by anything).
+     wrap        — and in a rail this narrow the honest answer is to let them
+       stack rather than to shave a tap target below --tap. */
+/* The foot spans the sheet now (`.pair-foot-full`, css/components.css), so this
+   is an ordinary action bar again: BACK at the leading edge, DONE at the
+   trailing one. `safe center` + `flex-wrap` were compensating for a 124px box
+   that no longer exists — 161px of buttons in a ~460px bar has nothing to
+   overflow, and wrapping was what made the foot 132px tall. */
+#carsetup .sheet-foot { justify-content: space-between; }
+/* Title / career / pit / lobby: BACK and the labelled dismiss do the same
+   leave, so BACK hides and CLOSE GARAGE (or RETURN TO …) is the one action.
+   From the circuit picker DONE is RACE SETUP (forward) and BACK stays. */
+#carsetup[data-cs-exit="one"] #cs-back { display: none; }
+#carsetup[data-cs-exit="one"] .sheet-foot { justify-content: stretch; }
+#carsetup[data-cs-exit="one"] #cs-done { flex: 1 1 auto; }
+
+/* THE COLUMNS COME FROM `.pane-pair` (css/components.css) — the shared
+   list-detail primitive. This screen used to spell the whole thing out itself,
+   as did #select and #career, which is why the same "action bar steals a row
+   from the list" bug had to be found three times. All that is left here is what
+   is genuinely this screen's: where the pair turns on, and how wide the rail is.
+
+   400, not 440. The sheet has a 430px FLOOR (--cs-sheet-w), which after its
+   border leaves 428px of container — four pixels under the old threshold. So the
+   one width the panel is guaranteed to have was the one width that missed the
+   two-pane layout. Everything from the floor up now gets the rail; a stacked
+   sheet (portrait phone, ~367px of container) gets the horizontal category
+   strip and one options scroller. */
+#cs-inner {
+  --pair-at: 400px;
+  /* 480, NOT THE 380 EVERY OTHER SHEET USES. `--compact-at` asks "is this sheet
+     short in its own units", and the honest threshold is different per screen
+     because what a screen must fit before its content starts is different. The
+     garage carries the most fixed furniture in the app — title, budget bar and
+     readout, a four-number stat block, a twelve-category strip, and a two-button
+     action bar — which comes to ~320 own units in the normal tier. A sheet under
+     480 therefore has under 160 left for the parts list, and a part row is 62:
+     under three of them, on the screen whose entire purpose is comparing parts.
+     MEASURED, portrait iPhone at UI SIZE 100% — the shipped default, the most
+     common way this screen is ever seen. Sheet 444.5 own units, so at 380 it
+     classified NORMAL and got the roomy head: head 196.3, foot 72.1, parts list
+     93.7 — ONE AND A HALF cards out of a catalogue of five. At 480 the compact
+     head this file already builds engages: head 154.8, foot 58.7, list 165.7 —
+     3.1 cards, and the budget readout stops wrapping. Nothing new is drawn; the
+     tier was simply never reaching the case it was designed for.
+     Not a general raise: 380 is right for a sheet that is mostly list. This is
+     the number for a sheet that is mostly chrome, which is why it is declared
+     here beside --pair-at rather than moved into css/tokens.css. */
+  --compact-at: 480px;
+  --pair-compact: off;
+  /* 28%, not 27%. At 27% a 529px desktop sheet gave the rail 142px, which left
+     the category label 67px against the 70px "SUSPENSION" needs at the 10px
+     desktop size — truncated by THREE pixels. Here the share binds, not the
+     floor (142 > 112), so widening the floor cannot fix the desktop case; only
+     the share can. 28% -> 148px, label 73px. See the touch floor at the end of
+     this file for the same defect at the other end of the ladder. */
+  /* 31%, not 28%: the sheet lost 40px to the car above, and the rail is the
+     column that cannot absorb it — 28% of the narrower sheet would have put the
+     label back under what "SUSPENSION" needs. At 31% the rail is 130px on a
+     1440px desktop, a shade WIDER than the 128px it had at 460, and the 40px
+     comes out of the option list (276px), whose rows are short. */
+  /* 140px floor / 34% share: chrome-devtools measure @ UI SIZE 115% (default
+     MCP viewport, .desktop) still ellipsized SUSPENSION at 128px/31%
+     (cw 73 / sw 81 — 8px short). Zoom grows glyph boxes without giving the
+     rail the same free width, so both the floor and the share move. */
+  --pair-split: minmax(140px, 34%);
+  --pair-gap: var(--gap);
+}
+/* Minimum LOCAL height for title/budget, one category row, one usable option
+   row and the action bar. SheetShape converts this to a per-panel zoom cap only
+   when the safe viewport cannot afford the user's requested UI size. */
+/* --fit-at by sheet shape (zoom-corrected) not viewport orientation. */
+#cs-inner[data-shape="tall"]             { --fit-at: 340px; }
+#cs-inner:not([data-shape="tall"])       { --fit-at: 240px; }
+/* SHORT SHEET: `--pair-compact: off` stacks this sheet so the tab strip
+   stays horizontal. A 852×393 phone is compact and still wide enough for
+   pair-on, which kept the vertical rail and starved #cs-options. */
+
+/* ================= LAYOUT: container queries on the sheet =================
+   Not media queries. What the panel can afford is a function of the width it
+   was given (which already accounts for the safe area and for the room the car
+   preview needs), never of the device. */
+
+/* Two stat columns as soon as label+bar+number fits twice over. */
+@container sheet (min-width: 380px) {
+  #cs-stats-inner { grid-template-columns: 1fr 1fr; }
+}
+
+/* The rest of what a wide garage does — the header band flattening, and the
+   padding each pane takes over from the shared .sheet-body. The PLACEMENT of the
+   two panes is `.pane-pair`'s job and is no longer written here; this block is
+   the same 400px threshold expressed as a container query because these rules
+   are about the header, not the pair. */
+@container sheet (min-width: 400px) {
+  #cs-header {
+    /* flex-start, not center: the budget row beside the title wraps to two
+       lines on a narrow container, and centring then floated the GARAGE
+       title into the middle of the taller neighbour — reading as BUDGET
+       above GARAGE (the phone header inversion). First lines align. */
+    flex-flow: row wrap; align-items: flex-start;
+    column-gap: var(--gap); row-gap: calc(var(--gap) * 0.5);
+  }
+  #cs-titlebar { flex: 0 0 auto; }
+  /* `display: contents` lifts the bar and the text+button row out of their
+     wrapper so the header can lay them out independently: the readout rides
+     beside the title, and the bar becomes a full-width rule under it. Stacking
+     all three (title / bar / readout) cost a whole option row of height. */
+  #cs-budget-wrap { display: contents; }
+  #cs-budget-row { flex: 1 1 200px; min-width: 0; flex-wrap: wrap; row-gap: 4px; }
+  #cs-budget-bar { flex: 0 0 100%; order: 2; }
+  /* WRAP, DO NOT ELLIPSISE. Measured at 852x393: "BUDGET: 600 / 600 cr
+     remaining" needs 200px and this row gave it 183, so it rendered as
+     "…600 cr rema…". That readout is the one number that constrains every
+     choice on the screen, and it shares the row with FREE BUILD. A second line
+     costs ~16px of header; the foot fix above just returned ~76px. */
+  #cs-budget { white-space: normal; overflow: visible; flex: 1 1 100%; }
+  #cs-stats-inner { flex: 1 1 100%; order: 3; }   /* stats get their own row */
+
+}
+
+/* ONE SOURCE OF TRUTH FOR "IS THE PAIR ON": the attribute, never the width.
+   These rules used to live in the `@container sheet (min-width: 400px)` block
+   above, which was the same threshold expressed a second way — and the two can
+   disagree for a frame, because the container query applies the instant the
+   screen is shown while `data-pair` waits on a ResizeObserver callback. In that
+   window the rail had its stacked-strip rules removed (a pair rule) while the
+   body was still a stacked flex column (no pair), so fourteen categories grew to
+   their full 658px inside a 544px sheet and five of them ended up unreachable
+   below its bottom edge. Measured, on desktop-narrow-860x560.
+   Anything that is only true WHEN THE PANES SPLIT belongs here. The rail may
+   scroll vertically if categories overflow — that is a side rail, allowed.
+   Options remain the main catalogue. */
+#cs-inner[data-pair="on"] #cs-tabs {
+  /* Bound the rail to its grid area so overflow-y actually scrolls. The
+     stacked-strip rule sets `overflow: hidden` + `max-height: none` on #cs-tabs,
+     and this pair override used to keep max-height:none — the rail then sized
+     to its 14 tabs and five of them sat clipped under the foot with no
+     scrollport (desktop-narrow and any short pair sheet). */
+  min-height: 0;
+  max-height: 100%;
+  align-self: stretch;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  /* a right lane for the scroll thumb — with zero right padding the sliver
+     painted on the tab plates and read as an artifact */
+  padding: calc(var(--pad) * 0.25) calc(var(--gap) * 2 / 3) var(--pad) var(--pad);
+  scroll-padding-block-end: var(--pad);
+  /* Restore the vertical .pane scroller the stacked strip overrides. */
+  overflow-x: hidden; overflow-y: auto;
+  overscroll-behavior-y: contain; touch-action: pan-y;
+  scrollbar-width: thin; scrollbar-gutter: stable;
+  scrollbar-color: color-mix(in oklab, var(--text) 38%, var(--carbon)) var(--carbon);
+  /* Rows exactly as tall as a tab, packed from the top. Left to stretch, the
+     nine categories divided up whatever height the rail had and each tab came
+     out a couple of px shorter than its own two lines of text. The rail is a
+     .pane, so when they no longer fit it scrolls — which is the honest answer,
+     and it now has an indicator saying so. */
+  grid-auto-rows: min-content;
+  align-content: start;
+}
+#cs-inner[data-pair="on"] #cs-tabs .cs-tab-row {
+  display: contents;
+  /* These groups are horizontal strips only in the stacked layout. Their
+     pan-x restriction can block vertical swipes starting on a rail tab. */
+  touch-action: pan-y;
+}
+#cs-inner[data-pair="on"] #cs-tabs .cs-tab {
+  flex: initial; white-space: normal;
+}
+#cs-inner[data-pair="on"] #cs-options {
+  padding: calc(var(--pad) * 0.25) var(--pad) calc(var(--pad) * 0.5) 0;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--text) 38%, var(--carbon)) var(--carbon);
+}
+/* Native scrollbars on the two garage panes default to a bright track that
+   clashes with the dark sheet. Theme both the Firefox shorthand (above) and
+   the Chromium pseudo-elements the live Pages shot showed. */
+#cs-inner[data-pair="on"] #cs-tabs::-webkit-scrollbar,
+#cs-options::-webkit-scrollbar {
+  width: 8px;
+  background: var(--carbon);
+}
+#cs-inner[data-pair="on"] #cs-tabs::-webkit-scrollbar-track,
+#cs-options::-webkit-scrollbar-track {
+  background: var(--carbon);
+}
+#cs-inner[data-pair="on"] #cs-tabs::-webkit-scrollbar-thumb,
+#cs-options::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--text) 38%, var(--carbon));
+  border-radius: var(--r-xs);
+}
+
+/* ---------- preview controls (bottom-left) ----------
+   ONE absolutely-positioned stack holding the camera chip row and the aero
+   group, laid out in normal flow inside it. That is the whole point: the two
+   used to be positioned separately, with the chip row lifted by a hard-coded
+   44px to clear the group below it. A hard-coded offset is a promise about
+   another element's height, and the aero group broke it the moment it wrapped
+   to a second row on a landscape handset — it grew up into the chips and
+   squashed them. A column cannot overlap itself, so the promise is now
+   structural instead of numeric.
+   It overlays the canvas region the sheet leaves for the car, so it never
+   fights the option list for space. #carsetup is pointer-events:none — that is
+   what lets the orbit drag reach the canvas underneath — so the CONTROLS opt
+   back in, while the stack itself stays transparent to the pointer: its empty
+   right-hand side sits over the car, and a wrapper that swallowed drags there
+   would break orbiting exactly where there is most car to orbit.
+   Positioned against the SAFE BOX (.screen's padding), not the raw viewport,
+   so it clears the home indicator on a notched phone. Bounded by BOTH edges
+   rather than by a max-width: left of the safe box, right of wherever the
+   sheet actually starts, so rows wrap inside the room the car has instead of
+   sliding under the panel. */
+#cs-stack {
+  pointer-events: none;
+  position: absolute;
+  /* Hug the sheet, not the left safe edge. A left+right stretch parked CAMERA
+     and ACTIVE AERO across the car well, a tap away from the panel they belong
+     to. Content-width + the scaled sheet inset keeps the overlap fix below. */
+  left: auto;
+  bottom: calc(var(--safe-b) + var(--gap));
+  /* MULTIPLY BY --ui-scale: THE PANEL PAINTS BIGGER THAN ITS CSS WIDTH.
+     #cs-inner is inside `.sheet`, which carries `zoom: var(--ui-scale)`
+     (css/components.css). #cs-stack is NOT — it is a child of #carsetup, which
+     is unzoomed. So one variable is read from two different coordinate spaces:
+     the panel's CSS width never moves (460px at 852 wide) while its PAINTED
+     width goes 460 -> 529 -> 598 -> 690 across the slider, and the bar reserved
+     the unscaled number.
+     Measured on the primary play shape (852x393), overlap of the camera bar by
+     the panel:  100% -8px (clear) | 115% +61px | 130% +130px | 150% +222px.
+     115% used to be the shipped coarse default (now 100% after the type floor),
+     so CAMERA and ACTIVE AERO sat under the panel out of the box on the shape
+     the game is played in. Players can still dial 115 via UI SIZE.
+     This is the deferred `--cs-sheet-w` defect in docs/archive/research/UI-SCALE-AND-ZOOM.md
+     §5b, and the fix is the one that section prescribes: the correction belongs
+     at the CONSUMPTION site, because the two consumers are in different zoom
+     spaces and no single declared value can be right for both. */
+  /* --sheet-eff-scale, falling back to --ui-scale: when SheetShape's fit cap
+     writes --sheet-scale on #cs-inner the panel PAINTS at that capped zoom,
+     not at the requested one — reserving --cs-sheet-w * --ui-scale then
+     reserves more than the panel paints, and at 200% on 852px the reservation
+     (920px) exceeds the viewport and parks CAMERA/ACTIVE AERO off the LEFT
+     edge (measured 2026-08-21: #cs-cam at x=-161). classifyFit mirrors the
+     effective scale onto the host for exactly this consumer. */
+  right: calc(var(--safe-r) + var(--cs-sheet-w) * var(--sheet-eff-scale, var(--ui-scale)) + var(--gap));
+  width: max-content;
+  max-width: calc(100vw - var(--safe-l) - var(--safe-r) - var(--cs-sheet-w) * var(--sheet-eff-scale, var(--ui-scale)) - var(--gap) * 2);
+  z-index: 2;
+  display: flex; flex-direction: column; align-items: stretch; gap: 6px;
+}
+/* The two top-level buttons. This row is all that shows at rest.
+   align-items:center — CAMERA and ACTIVE AERO share one chip height; flex-end
+   used to drop the taller aero chip below the cam chip's baseline. */
+#cs-bar {
+  pointer-events: auto;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  max-width: 100%;
+}
+/* The disclosure. Its lit state hangs off aria-expanded rather than the `active`
+   class every other group uses, deliberately: `active` is what AriaState watches
+   to decide a group is a set of toggles, and a disclosure already states itself
+   with aria-expanded. Two competing state attributes on one button is worse for
+   a screen reader than either alone. */
+#cs-cam {
+  flex: 0 0 auto; width: auto; margin: 0;
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 10px; border-radius: var(--r-sm);
+  font-size: var(--fs-micro); font-weight: 800; letter-spacing: var(--ls-5);
+  background: var(--plate-opaque); color: color-mix(in oklab, var(--text) 62%, transparent);
+  border: 1px solid var(--card-line);
+  /* no backdrop-filter: these chips sit over the garage's LIVE turntable
+     canvas (renderSetupPreview spins the car every frame), so a blur here
+     makes the compositor re-snapshot and re-blur the backdrop every frame
+     on the screen you sit on longest outside a race. Same call hud.css and
+     overlays.css already make over the race canvas; the tinted bg, raised
+     a little to compensate, carries the look. */
+  /* --chip-h: same rung as the touch override below. MEASURED readability
+     survey: desktop #cs-cam/#cs-aero sat at 31px under a 40px chip floor. */
+  min-height: var(--chip-h);
+}
+/* Gated per the tokens.css policy: a tap sticks :hover on iOS. */
+@media (hover: hover) and (pointer: fine) {
+  #cs-cam:hover { color: #fff; border-color: rgba(255,255,255,0.3); }
+}
+.cs-cam-caret { font-size: var(--fs-micro); line-height: 1; transition: transform 0.15s ease; }
+#cs-cam[aria-expanded="true"] {
+  background: rgba(0,204,136,0.18); color: #0c8;
+  border-color: rgba(0,204,136,0.4);
+}
+#cs-cam[aria-expanded="true"] .cs-cam-caret { transform: rotate(180deg); }
+
+/* The panel. In normal flow ABOVE the bar inside the column, so it pushes
+   nothing and overlaps nothing — it just makes the stack taller, and the stack
+   is anchored at the bottom. */
+#cs-cam-panel {
+  pointer-events: auto;
+  display: flex; flex-direction: column; gap: 5px;
+  padding: 8px 10px; border-radius: var(--r-sm);
+  background: var(--carbon);
+  border: 1px solid var(--card-line);
+  /* no backdrop-filter: these chips sit over the garage's LIVE turntable
+     canvas (renderSetupPreview spins the car every frame), so a blur here
+     makes the compositor re-snapshot and re-blur the backdrop every frame
+     on the screen you sit on longest outside a race. Same call hud.css and
+     overlays.css already make over the race canvas; the tinted bg, raised
+     a little to compensate, carries the look. */
+  max-width: 100%;
+}
+#cs-cam-panel[hidden] { display: none; }
+/* The popup may be wider than the car-gap trigger row. Keeping it in that
+   sliver forced each preset onto a separate line and eight pages of scrolling.
+   Position above the bar so Camera stays available to dismiss it. */
+@media (orientation: landscape) {
+  #cs-cam-panel {
+    position: absolute;
+    left: 0; bottom: calc(100% + var(--gap));
+    width: min(60vw, 420px);
+    max-width: calc(100vw - var(--safe-l) - var(--safe-r) - var(--gap) * 2);
+    max-height: min(45vh, 220px);
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+  }
+}
+/* Label column + controls. The labels are a fixed column so the three rows of
+   chips line up on one left edge instead of stepping in and out with the label
+   width. */
+/* the camera panel rows are its only direct div children — the id scopes
+   them without a class the shell had to repeat five times */
+#cs-cam-panel > div { display: flex; align-items: center; gap: 8px; }
+.cs-pan-lbl {
+  flex: 0 0 40px;
+  font-size: var(--fs-micro); font-weight: 800; letter-spacing: var(--ls-4);
+  color: rgba(255,255,255,0.45); text-align: right;
+}
+.cs-pan-grp, #cs-view, #cs-wing-views {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+  min-width: 0;
+}
+/* A narrow LANDSCAPE screen: the sheet's 410px floor takes most of the width
+   and the sliver beside it cannot hold a row of chips, so the controls would be
+   pointing at nothing. LANDSCAPE ONLY — this used to hide the stack on every
+   screen under 700px "because the sheet is the whole screen", which was the
+   pre-band portrait and stayed true in the CSS for a year after the band
+   arrived: a portrait phone shows the car across the bottom 30% and had no
+   way to aim at it. The portrait placement is with the other portrait rules
+   at the end of this file. */
+/* Phone-width layouts keep usable category targets even with a mouse or
+   trackpad attached; pointer type must not collapse their navigation strip. */
+@media (max-width: 1000px) {
+  #carsetup #cs-inner #cs-tabs .cs-tab {
+    min-height: max(44px, var(--tap-paint, var(--tap)));
+    min-block-size: max(44px, var(--tap-paint, var(--tap)));
+  }
+}
+@media (max-width: 700px) and (orientation: landscape) {
+  /* A narrow safe viewport cannot hold a dock plus floating controls. Reserve
+     a bottom toolbar row; the sheet and its parts scroller receive the rest. */
+  #carsetup { grid-template-rows: minmax(0, 1fr) auto; row-gap: var(--gap); }
+  #carsetup #cs-inner {
+    grid-row: 1; width: 100%; height: 100%; min-height: 0; max-height: none;
+    display: grid; grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto minmax(0, 1fr);
+  }
+  #carsetup #cs-inner > .sheet-head,
+  #carsetup #cs-inner #cs-budget-wrap { display: contents; }
+  #carsetup #cs-inner > #cs-body {
+    display: grid; grid-column: 1 / -1; grid-row: 3;
+    grid-template-columns: minmax(var(--tap-paint, var(--tap)), 28%) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr); min-height: 0;
+  }
+  #carsetup #cs-inner #cs-titlebar {
+    grid-column: 1; grid-row: 1; flex-direction: row; flex-wrap: nowrap;
+    max-width: none; padding-inline: var(--pad); align-items: center; gap: var(--gap);
+  }
+  #carsetup #cs-inner #cs-team { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #carsetup #cs-inner #cs-budget-row {
+    grid-column: 1 / -1; grid-row: 2; min-width: 0;
+    padding-inline: var(--pad); flex-wrap: nowrap;
+  }
+  #carsetup #cs-inner #cs-budget { flex: 1 1 0; min-width: 0; }
+  #carsetup #cs-inner #cs-stats-inner,
+  #carsetup #cs-inner #cs-budget-bar { display: none; }
+  #carsetup #cs-inner > .sheet-foot { grid-column: 2; grid-row: 1; }
+  /* Height is the scarce axis here: a scrolling category rail leaves a
+     useful parts viewport instead of spending another full row on tabs. */
+  #carsetup #cs-inner #cs-tabs {
+    grid-column: 1; grid-row: 1; flex-direction: column; min-height: 0;
+    max-height: 100%; overflow-x: hidden; overflow-y: auto;
+    scroll-snap-type: y proximity; overscroll-behavior-y: contain; touch-action: pan-y; padding-inline: 0;
+  }
+  #carsetup #cs-inner #cs-options { grid-column: 2; grid-row: 1; }
+  #carsetup:has(.cs-liv-editor) #cs-inner #cs-options { grid-column: 1 / -1; }
+  #carsetup #cs-stack {
+    display: flex; grid-row: 2; position: relative;
+    inset: auto; width: 100%; max-width: none; z-index: 4;
+  }
+  #cs-stack #cs-bar { flex-direction: row; flex-wrap: nowrap; align-items: center; }
+  #cs-stack #cs-cam { width: auto; flex: 0 0 auto; }
+  #cs-stack #cs-aero { width: auto; min-width: 0; flex: 1 1 auto; flex-direction: row; align-items: center; }
+  #carsetup #cs-cam-panel {
+    top: auto; bottom: calc(100% + var(--gap));
+    left: 0; right: auto; width: 100%; max-width: 100%;
+  }
+}
+/* CAMERA / ACTIVE AERO / Z-MODE sit over the garage canvas, outside #hud.
+   A dim sheet (teampicker, customize) must stand them down — they painted
+   through the scrim on landscape garage. Garage itself is `.screen` without
+   `.dim`, so the stack stays up at rest. */
+body:has(> .screen.dim:not([hidden])) #cs-stack { visibility: hidden; }
+/* ACTIVE AERO — top level beside CAMERA, never inside the panel: it changes the
+   CAR, not the view of it, and it is the one control here you tap over and over
+   to watch something happen. Its own wrapper so AriaState sees a single-button
+   group — sharing a parent with #cs-cam would make the disclosure announce
+   itself as an unpressed toggle the moment the aero toggle lit up. */
+#cs-aero-bar {
+  pointer-events: auto;
+  display: flex; align-items: stretch;
+  /* 0 0 auto with CAMERA's group: the bar wraps before either chip is crushed. */
+  flex: 0 0 auto; width: max-content;
+  max-width: 100%;
+}
+/* WRAPS INSIDE THE STACK, never past it. #cs-stack is capped at the room left
+   of the panel. Wide / play-shape keep a one-line chip (menu-baseline garage
+   goldens at 844 and 1440). Below 820px a row of shrinking spans lets
+   ACTIVE AERO and CORNER MODE paint over each other (survey
+   garage_open_sunlight_narrow500) — drop the value under the label there.
+   Chip chrome matches #cs-cam (flex 0 0 auto, align-items center, same pad/
+   gap/type) so the two top-level buttons read as one pair. */
+#cs-aero {
+  flex: 0 0 auto; max-width: 100%; flex-wrap: nowrap;
+  display: flex; flex-direction: row; align-items: center; gap: 6px;
+  width: max-content; margin: 0;
+  padding: 5px 10px; border-radius: var(--r-sm);
+  background: var(--plate-opaque);
+  border: 1px solid var(--card-line);
+  /* no backdrop-filter: these chips sit over the garage's LIVE turntable
+     canvas (renderSetupPreview spins the car every frame), so a blur here
+     makes the compositor re-snapshot and re-blur the backdrop every frame
+     on the screen you sit on longest outside a race. Same call hud.css and
+     overlays.css already make over the race canvas; the tinted bg, raised
+     a little to compensate, carries the look. */
+  min-height: var(--chip-h);
+}
+@media (hover: hover) and (pointer: fine) {
+  #cs-aero:hover { border-color: rgba(255,255,255,0.3); }
+}
+/* Label never shrinks away: flex 0 1 + overflow:ellipsis on BOTH spans used to
+   ellipsize "ACTIVE AERO" to nothing while CORNER/STRAIGHT MODE kept the room. */
+.cs-aero-lbl {
+  flex: 0 0 auto;
+  font-size: var(--fs-micro); font-weight: 800; letter-spacing: var(--ls-5);
+  color: color-mix(in oklab, var(--text) 62%, transparent);
+  display: block; white-space: nowrap;
+}
+/* Value width is pinned to STRAIGHT MODE (the longer of the two strings).
+   Without a floor, CORNER MODE shrunk the chip ~12px and the bar jumped on
+   every toggle (MCP garage-next pack, 844 and 1440). 13ch under-shot once
+   letter-spacing is on (~3px left); 14ch clears STRAIGHT at fs-micro and the
+   1000px fs-2 bump. flex 0 0 auto keeps the floor; ellipsis is only a safety
+   net under extreme UI scale. */
+.cs-aero-val {
+  flex: 0 0 auto;
+  min-width: 14ch;
+  font-size: var(--fs-micro); font-weight: 800; font-style: italic; letter-spacing: var(--ls-3);
+  color: var(--text);
+  display: block; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+/* Lit state uses the same CYAN the in-race HUD chip uses for X-mode, so the
+   garage and the track speak the same colour about the same system. */
+#cs-aero.active { background: rgba(34,211,238,0.16); border-color: rgba(34,211,238,0.45); }
+#cs-aero.active .cs-aero-lbl { color: rgba(125,249,255,0.75); }
+#cs-aero.active .cs-aero-val { color: #7df9ff; }
+@media (max-width: 1000px) {
+  /* Touch-ish widths: keep padding/type bumps; height floor is --tap-min /
+     --chip-h from the base + body:not(.desktop) rules, not a narrower 34. */
+  #cs-aero { padding: 6px 10px; gap: 6px; }
+  .cs-aero-lbl { font-size: var(--fs-micro); letter-spacing: var(--ls-4); }
+  .cs-aero-val { font-size: var(--fs-2); }
+  #cs-cam { padding: 6px 10px; font-size: var(--fs-micro); }
+  #cs-cam-panel { padding: 6px 8px; gap: 4px; }
+  .cs-pan-lbl { flex-basis: 30px; }
+}
+/* Narrower than the phone-landscape golden (844). Stacked labels, not a
+   second class: the 1000px bump above still applies, this only changes
+   direction so the two strings cannot share one squeezed line. */
+@media (max-width: 820px) {
+  #cs-aero {
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+  }
+}
+/* ONE CHIP CLASS, TWO CONTEXTS — `--sheet-w`'s shape applied to the preview
+   bar (SKILL.md rule 8: "variation belongs in custom properties on context
+   selectors, not in new classes"). There used to be three classes here:
+   .cs-view-btn plus cs-view-zoom and cs-view-nudge, each of which existed
+   only to restate a font-size, a padding and a line-height on buttons that
+   ALREADY have ids. The two variants are gone; what differed is now two custom
+   properties whose per-button values are set on those ids below.
+   The defaults live in the var() fallbacks so a chip with no context — the five
+   camera presets and the two wing views — is exactly what it was. */
+.cs-view-btn {
+  flex: 0 0 auto; width: auto; margin: 0;
+  font-size: var(--vb-fs, var(--fs-micro)); font-weight: 800; letter-spacing: var(--ls-4);
+  padding: var(--vb-pad, 5px 9px); border-radius: var(--r-sm);
+  background: var(--plate-opaque); color: var(--text);
+  border: 1px solid var(--card-line);
+  /* no backdrop-filter: these chips sit over the garage's LIVE turntable
+     canvas (renderSetupPreview spins the car every frame), so a blur here
+     makes the compositor re-snapshot and re-blur the backdrop every frame
+     on the screen you sit on longest outside a race. Same call hud.css and
+     overlays.css already make over the race canvas; the tinted bg, raised
+     a little to compensate, carries the look. */
+  /* Touch targets: the visual chip stays small, the hit area does not.
+     max() with the WCAG floor: touch re-floors these to --chip-h below, but
+     desktop kept the bare 30 — 12px painted at UI SIZE 40%. */
+  min-height: max(30px, var(--tap-min));
+}
+@media (hover: hover) and (pointer: fine) {
+  .cs-view-btn:hover { color: #fff; border-color: rgba(255,255,255,0.3); }
+}
+/* `active` is the codebase's "this one is chosen" class (see AriaState's ON
+   list), so the lit state hangs off it rather than off aria-pressed — that
+   keeps the attribute purely a screen-reader concern. Only SPIN ever takes it;
+   the view chips are momentary jumps, not a selection. Same ring as every
+   other chosen chip (css/tokens.css --plate-on) — it used to be green. */
+.cs-view-btn.active {
+  background: var(--plate-on); color: var(--text);
+  border-color: var(--red);
+}
+/* `contents` keeps the span as the chips' DOM PARENT — which is the whole point
+   of it, since AriaState groups by parent — while taking its box out of the
+   layout so the chips wrap as one continuous run. As real flex items the groups
+   could not break internally, so SPIN was stranded on a row of its own and the
+   bar stacked three deep on a phone. */
+.cs-view-grp { display: contents; }
+/* THE ZOOM PAIR. One step larger, tighter box — a `+` and a `-` are glyphs, not
+   words, so they read small at the label size the worded chips use. */
+#cs-view-in, #cs-view-out { --vb-fs: var(--fs-2); --vb-pad: 3px 10px; line-height: 1; }
+/* THE EIGHT ARROWS. They repeat while held, so they must not start a text
+   selection or a long-press context menu under the finger. */
+#cs-view-left, #cs-view-right, #cs-view-up, #cs-view-down,
+#cs-pan-left, #cs-pan-right, #cs-pan-fwd, #cs-pan-back {
+  --vb-pad: 4px 8px; line-height: 1;
+  touch-action: none; user-select: none; -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.cs-view-sep {
+  width: 1px; height: 16px; margin: 0 2px;
+  background: rgba(255,255,255,0.16);
+}
+.cs-view-hint {
+  font-size: var(--fs-micro); letter-spacing: var(--ls-4); text-transform: uppercase;
+  color: rgba(255,255,255,0.34); margin-left: 2px;
+}
+/* No mouse = no drag affordance to advertise, and no room for it either. */
+@media (hover: none), (max-width: 560px) {
+  .cs-view-hint { display: none; }
+}
+/* Phone-sized car area: the sheet has a 430px floor, so on a landscape handset
+   the bar has ~250px to work with — and less again on a notched one, where the
+   safe-area inset eats another 59px. Shrink the chips so that wraps to two rows
+   instead of three. */
+@media (max-width: 1000px) {
+  #cs-view { gap: 3px; }
+  .cs-view-btn {
+    letter-spacing: var(--ls-3);
+    --vb-pad: 6px 9px; min-height: 34px;
+  }
+  #cs-view-in, #cs-view-out { --vb-fs: var(--fs-micro); --vb-pad: 2px 8px; }
+  /* THE ARROWS TAKE THE SHARED COMPACT PADDING, and always did — restated
+     rather than inherited because a custom property set on an id (their
+     `--vb-pad: 4px 8px` above) outranks the class rule that used to beat it on
+     source order alone. Same computed box as before this consolidation: the
+     roomier 4px 8px is the WIDE-bar value, and the bar is what has to wrap to
+     two rows on a handset. */
+  #cs-view-left, #cs-view-right, #cs-view-up, #cs-view-down,
+  #cs-pan-left, #cs-pan-right, #cs-pan-fwd, #cs-pan-back { --vb-pad: 6px 9px; }
+  /* The dividers cost width and, once the row wraps, land at arbitrary places
+     in it — they read as separators of nothing. */
+  .cs-view-sep { display: none; }
+}
+
+/* ---------- THE TOUCH TYPE FLOOR ----------------------------------------
+   Same rule as the one at the end of css/menus.css, for the same reason: the
+   GARAGE carried the smallest type in the app (8px aero and camera labels,
+   10px option tags and stat deltas) on the screen you sit on longest outside
+   a race. Raised to the --label floor for touch only.
+
+   LAST IN THE FILE, because the phone media queries above cannot win against
+   the base declarations that follow them at equal specificity — a media query
+   adds no specificity and source order decides. Desktop keeps its density. */
+body:not(.desktop) .cs-tab-lbl,
+body:not(.desktop) .cs-tab-cur { font-size: var(--fs-micro); }
+/* AND THEREFORE A WIDER RAIL. The rule above raises the touch category label to
+   12px without giving it anywhere to go, and in the PAIR layout #cs-tabs is a
+   single-column rail sized by --pair-split, not by its own grid. Measured on an
+   iPad portrait (834x1194): the label column comes out 86px, "SUSPENSION" needs
+   83px plus 20px of .cs-tab padding and 2px of border = 105 — so it renders
+   "SUSPENSI…", the exact case docs/LAYOUT-AUDIT.md names.
+   Widen the rail's FLOOR, not its share: 27% already gives a wide sheet plenty,
+   and the defect is only at the minimum. The cost is ~28px off the option list
+   on the narrowest sheet that still splits. A category you cannot read is worse
+   than an option row that is a little narrower — this rail is how you navigate
+   the screen.
+   NOTE FOR THE NEXT EDITOR: a `body:not(.desktop) #cs-tabs` rule cannot fix
+   this. `#cs-inner[data-pair="on"] #cs-tabs` is two IDs and wins; that was the
+   first attempt and it computed to the same 86px. */
+body:not(.desktop) #cs-inner { --pair-split: minmax(140px, 28%); }
+
+/* THE PREVIEW CONTROLS ARE SIZED BY POINTER, NOT BY WIDTH. #cs-cam, #cs-aero and
+   the view buttons sit at `min-height: 30px`, raised to 34px by a
+   `@media (max-width: 1000px)` block. That gates a TOUCH question on WIDTH, and
+   it is inverted: a 393px phone gets 34px while an iPad landscape at 1194px —
+   also touch, also thumbs — falls out of the branch and keeps 30px. Measured
+   there: #cs-cam 86x31, #cs-aero 157x31, on a device with maxTouchPoints > 0
+   and a --tap of 52.
+   CAMERA and ACTIVE AERO take the full touch floor, the view chips keep
+   --chip-h. The two were on --chip-h too ("they float over the live car
+   preview, so one rung below the floor"), and measured (layout-audit
+   2026-10-05, both iPhone viewports, with and without the tap-target pass)
+   that rung painted them 100x48 and 221x48 — under the 52 floor on the two
+   controls a player reaches for most while the garage is open. They still
+   float over the preview exactly as before; 4px more of chip costs the car
+   nothing. PLAIN --tap, NOT --tap-paint: #cs-stack sits outside the zoomed
+   .sheet, and --tap-paint pre-divides by --ui-scale to paint 52 INSIDE a
+   zoomed sheet — out here it painted 52 / 1.09 = 48 (layout-audit on the
+   merged tree 2026-10-05: #cs-cam 100x48, #cs-aero 221x48, both iPhone
+   viewports). Un-zoomed, --tap is the floor itself: 52 on touch, 44 with a
+   mouse. The camera panel's view
+   chips are a disclosure opened and left, and stay on --chip-h. Width still
+   decides their PADDING and type above; only the target floor moves here.
+   docs/LAYOUT-AUDIT.md states the rule this restores: "Input modality is not
+   size. A 1024px iPad is not a desktop." */
+/* .cs-view-btn ALONE covers the zoom pair and the eight arrows: every one of
+   them carries that class in the markup, so the two extra selectors this list
+   used to name were restating a floor they already had. */
+body:not(.desktop) .cs-view-btn { min-height: var(--chip-h); }
+body:not(.desktop) #cs-cam,
+body:not(.desktop) #cs-aero { min-height: var(--tap); }
+body:not(.desktop) .cs-opt-tag { font-size: var(--fs-micro); }
+body:not(.desktop) .cs-opt-desc { font-size: var(--fs-2); }
+body:not(.desktop) .cs-delta { font-size: var(--fs-micro); }
+/* cs-cam-lbl is gone with this line, and it was the whole class: its ONLY
+   declaration anywhere in css/ was this font-size, and #cs-cam already sets the
+   same var(--fs-micro) in all three of its rules (base, the max-width:1000px
+   block, and the one below) — so the label inherited that value whatever
+   happened, and the class could never change a rendered pixel. */
+body:not(.desktop) .cs-aero-lbl { font-size: var(--fs-micro); }
+body:not(.desktop) .cs-cam-caret { font-size: var(--fs-micro); }
+body:not(.desktop) #cs-unlimited { font-size: var(--fs-micro); }
+body:not(.desktop) #cs-cam { font-size: var(--fs-micro); }
+/* FREE BUILD COMES OFF THE FULL TAP LADDER ON A SHORT SHEET — and it is the
+   single biggest thing in this header, by a distance nobody would guess from
+   looking at it. It is a 10px chip with 4px of padding, so its own content is
+   ~18 own units; `min-height: var(--tap)` (css/components.css) makes it 52, and
+   because it shares a flex line with the budget READOUT, which is 20, the whole
+   line becomes 76.
+   MEASURED, garage on a landscape iPhone at UI SIZE 150% — the shape the game is
+   played in. Sheet 218 own units. Header 146.4 of them: title+budget line 76,
+   budget bar 10, stat block 46. Foot 54. Which leaves SEVENTEEN units for the
+   category rail and the parts list TOGETHER, both of which the audit's new
+   `starved` check correctly calls absent. One button's tap floor was a third of
+   the panel.
+   `--tap-min` is the WCAG 2.5.8 floor expressed in the sheet's own units
+   (css/tokens.css) — 24 ACTUAL px however the sheet is zoomed. So this stays a
+   legal target; it stops being a 52px one. That trade is already made twice in
+   this codebase for exactly this kind of control, both recorded: the tuner's
+   rail foot and the compact action bars. FREE BUILD is a two-state toggle you
+   press once a session, sitting next to the list you came to the screen to read.
+   Only where the sheet is short. At any comfortable height it keeps the full
+   ladder, because there the 52 costs nothing. */
+/* Chip floor, not --tap-min. Measured 852×393 @115%: --tap-min landed at 28px
+   painted — under the house chip ladder (46 on touch) and a hard miss for a
+   labeled toggle. --chip-h is the secondary-control rung already used by cam/
+   aero chips on touch; full --tap stays off here so the header does not reclaim
+   the third of the panel the comment above documented. */
+#cs-inner[data-density="compact"] #cs-unlimited { min-height: var(--chip-h); }
+/* One-line tabs on a short sheet. The current-part line doubled the strip
+   (measured 54px / scrollWidth 1110 on 852×393) and hid half the catalogue
+   behind a sideways pan. The option list already names the fitted part. */
+#cs-inner[data-density="compact"] .cs-tab-cur { display: none; }
+#cs-inner[data-density="compact"] .cs-tab {
+  padding: calc(var(--gap) * 0.45) calc(var(--gap) * 0.8);
+  justify-content: center;
+}
+/* AND THE BUDGET BAR GOES, because it is the one thing in this header that says
+   nothing the line beside it does not. "BUDGET: 600 / 600 cr remaining" is the
+   same fact, exactly, in text — the bar is a glanceable for a number that is
+   already legible. It costs 10 own units plus its row gap.
+   MEASURED with the notch injected, garage on a landscape iPhone at UI SIZE
+   150%: the panel is 306 device px tall, the action bar takes 82, the header
+   takes ~180, and #cs-tabs and #cs-options were left THIRTY-NINE PX EACH — under
+   the 44px floor `starved` uses, and under one row of either list. Every pixel
+   the header gives back here is a pixel of the two lists the screen exists for.
+   Only in the compact tier. On any panel with the height for it the bar is worth
+   having, and it comes straight back. */
+#cs-inner[data-density="compact"] #cs-budget-bar { display: none; }
+
+/* ---------- the SHORT garage head ---------- */
+/* `data-density="compact"` (js/game/sheetshape.js) means the sheet is short in
+   its OWN units — which is what UI SIZE 150% does to any screen, since `zoom`
+   shrinks the coordinate space the CSS is written in while the viewport stays
+   put. Measured at 1000x462 and UI SIZE 150%, in own units: a 297px sheet whose
+   head took 142px, of which #cs-budget-row was 66 and the stat block 52 — more
+   between them than the option list was left with, and the list was down to a
+   SINGLE row.
+
+   The budget line gives its dedicated row back. `flex: 1 1 100%` above is the
+   right answer when WIDTH is the scarce axis (it stopped "…600 cr rema…"), and
+   the wrong one when HEIGHT is: 200px is the width that readout actually needs,
+   so ask for exactly that and let it share the line with FREE BUILD when the row
+   can seat both — it wraps on its own if it cannot, so nothing re-truncates.
+   Specificity is deliberate: the rule it overrides is a bare #id inside a
+   container query, and a matching-weight selector here would silently lose. */
+/* The width formula at the top of this file now reserves 320 VISUAL px for the
+   car at every zoom, so the panel no longer starves it and there is nothing to
+   undock from. An earlier pass here DID undock on a short sheet; it was keyed on
+   data-density, which answers a HEIGHT question, while "is the gap worth
+   keeping" is a WIDTH one — and on an 852x393 landscape phone that threw away a
+   369px car preview that was perfectly good. Reverted deliberately, recorded so
+   the next person does not re-derive it. */
+/* THE LIST COMPACTS TOO, not just the chrome above it. Reserving the car its
+   320 visual px makes the panel narrower, and a narrower option row WRAPS —
+   name, badge, delta chips and price stack instead of sitting on one line — so
+   buying the car its space with row height would just move the readability
+   problem. Measured at 1000x462, UI SIZE 150%: 8px row padding and a 4px delta
+   gap put one option on screen; at 4px/2px, two fit. Compact hides
+   `.cs-opt-desc` so a short landscape sheet spends the leftover on more rows. */
+#cs-inner[data-density="compact"] .cs-opt { padding: 4px 9px; }
+#cs-inner[data-density="compact"] .cs-opt-deltas { margin-top: 2px; gap: 3px; }
+#cs-inner[data-density="compact"] .cs-opt-desc { display: none; }
+#cs-inner[data-density="compact"] #cs-options { gap: calc(var(--gap) * 0.45); }
+#cs-inner[data-density="compact"] #cs-options .cs-liv-editor,
+#cs-inner[data-density="compact"] #cs-options .cs-tune-editor { gap: calc(var(--gap) * 0.35); }
+#cs-inner[data-density="compact"] #cs-options .cs-liv-editor > .adv-help:not(#cs-rake-readout),
+#cs-inner[data-density="compact"] #cs-options .cs-tune-editor > .adv-help:not(#cs-rake-readout) { display: none; }
+/* ONE header row on a short sheet: the readout wraps BESIDE FREE BUILD instead
+   of pushing the button onto a line of its own. Measured on the landscape
+   iPhone (734x343): header 84 -> 57px, #cs-options 88 -> 115px. */
+#cs-inner[data-density="compact"] #cs-budget-row { flex-wrap: nowrap; }
+#cs-inner[data-density="compact"] #cs-budget-row #cs-budget { flex: 1 1 0; min-width: 0; }
+#cs-inner[data-density="compact"] #cs-stats-inner { padding: 1px calc(var(--gap) * 1.1); }
+#cs-inner[data-density="compact"] .cs-stat-row { min-height: 15px; }
+/* CRITICAL LOCAL WIDTH — at high UI size the stat summary can consume the
+   entire short sheet before the selectable parts appear. This is deliberately
+   a container threshold, not a phone breakpoint: the Garage keeps stats at its
+   normal local width and yields them only when zoom/orientation leaves less
+   than the measured room required by header + tabs + one option + actions.
+   Portrait and landscape have different budgets because portrait owns a tall
+   bottom band while landscape shares the frame with the car. */
+/* Stat-block hide thresholds differ by sheet shape: a tall sheet shows stats
+   until 300px (portrait phone stacked), a wide sheet until 420px (landscape phone
+   paired — more chrome around the stat band competes for the same narrow column).
+   Uses data-shape (zoom-corrected) not @media orientation. */
+@container sheet (max-width: 300px) {
+  #cs-inner[data-shape="tall"][data-density="compact"] #cs-stats-inner { display: none; }
+}
+@container sheet (max-width: 420px) {
+  #cs-inner:not([data-shape="tall"])[data-density="compact"] #cs-stats-inner { display: none; }
+  /* Livery editor pill rows in a NARROW sheet (portrait phone, and a landscape
+     phone's paired panel): the label goes ABOVE its pills instead of beside
+     them. Beside, the 68px label column took a quarter of the width and the
+     eleven SPINE TOP pills ran eight lines deep at two a line; stacked, they
+     get the full width and run five. Measured, not eyeballed. The group is
+     sized to its content here — a flex-basis 0 item in an auto-height column
+     is the one flexbox case worth not trusting. */
+  .cs-liv-ed-row:has(> .cs-liv-ed-finish) { flex-direction: column; align-items: stretch; gap: calc(var(--gap) * 0.3); }
+  .cs-liv-ed-row:has(> .cs-liv-ed-finish) > .cs-liv-ed-lbl { flex: 0 0 auto; }
+  .cs-liv-ed-row:has(> .cs-liv-ed-finish) > .cs-liv-ed-finish { flex: 0 0 auto; width: 100%; }
+}
+/* THE FOOT IS THE LAST THING THAT MAY PUSH CONTENT OFF. On a landscape phone at
+   UI SIZE 150% the head and the foot together came to 2px more than the panel,
+   so the grid's 1fr body row collapsed to zero and the 2px landed on .sheet-foot
+   — BACK and DONE clipped by exactly that much in four screens of the matrix.
+   The shared compact tier already trims this to ~2.9px a side (--pad 13 x 0.22);
+   the garage is the densest sheet in the app and needs the last two. */
+#cs-inner[data-density="compact"] > .sheet-foot { padding-top: 1px; padding-bottom: 1px; }
+/* ...AND IT MAY NOT WRAP. Two buttons in a `flex-wrap: wrap` bar is a coin flip
+   decided by a few pixels, and on a portrait phone at UI SIZE 150% it lands the
+   wrong way: BACK and DONE want 226 of the 220 units inside the foot, so DONE
+   drops to a second row and the bar goes 52 units tall to 114. The panel is 340
+   units. That six-unit overshoot cost the parts list a THIRD of the sheet.
+   The comment further up this file already recorded wrapping making this foot
+   132px tall once, in the pair layout, and fixed it by giving the bar more room.
+   That fix does not reach here, because in the stacked layout the bar is the
+   panel's full width and the panel is 246 units wide — there is no more room to
+   give. Two equal columns instead: the buttons share whatever there is and the
+   count of rows is a fact of the layout rather than an outcome of arithmetic.
+   `minmax(0, 1fr)` and `min-width: 0` because a grid item's automatic minimum is
+   its content, which is the same refusal-to-shrink that started this. */
+#cs-inner[data-density="compact"]:not([data-pair="on"]) > .sheet-foot {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: calc(var(--gap) * 0.6);
+}
+#cs-inner[data-density="compact"]:not([data-pair="on"]) > .sheet-foot > button {
+  min-width: 0; margin: 0;
+}
+/* Play-shape (compact, short landscape): dismiss lives in the header row —
+   not the two-column foot grid above, which belongs on portrait/tall stacked
+   sheets. Same orientation gate as the play-shape block above. */
+@media (orientation: landscape) {
+  #cs-inner[data-density="compact"]:not([data-pair="on"]):not([data-shape="tall"]) > .sheet-foot {
+    display: flex; flex-direction: column; flex-wrap: nowrap;
+    grid-template-columns: none;
+  }
+}
+
+/* ---------- portrait: the car gets the bottom band ---------- */
+/* Now affordable, and only because the strip above paid for it. The budget on a
+   393x852 phone at UI SIZE 115%, panel 828: head 226 + categories 60 + foot 87
+   = 373, where the category GRID alone used to be 211 of that. 70% leaves the
+   car a 248px band, which is what it needs — at the fit distance the car is
+   ~29% of the frame tall.
+
+   `orientation`, not the sheet's own `data-shape`: shape is measured FROM the
+   sheet's box, so a rule that resizes the sheet would feed its own input and
+   could oscillate. Orientation is an outside fact, and it is the one question
+   here that `zoom` does not distort.
+
+   The other end of this is renderSetupPreview (js/game.js), which reads
+   #cs-inner's live rect, sees the gap is BELOW rather than beside, and shifts
+   the frustum down instead of sideways. Change the split here and that is the
+   half that has to agree. */
+@media (orientation: portrait) {
+  /* Reserve an actual row for Camera/Active Aero. A floating row underneath
+     the sheet lost hit testing to Close Garage on short portrait phones. */
+  #carsetup {
+    place-items: start stretch;
+    grid-template-rows: minmax(0, 1fr) auto;
+    row-gap: var(--gap);
+  }
+  #cs-inner {
+    grid-row: 1;
+    width: 100%; height: 100%; min-height: 0; max-height: 70vh;
+    position: relative; z-index: 3;
+    --compact-at: 560px;
+  }
+  #cs-stack {
+    grid-row: 2;
+    position: static;
+    width: 100%; max-width: none;
+    min-height: 0;
+  }
+  #cs-cam-panel {
+    max-height: min(30vh, 220px);
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+  }
+  #cs-inner #cs-stats-inner { grid-template-columns: 1fr 1fr; column-gap: calc(var(--gap) * 0.8); }
+  #cs-inner #cs-stats-inner .cs-stat-row { min-width: 0; justify-content: space-between; }
+  #cs-inner #cs-stats-inner .cs-stat-label { width: auto; min-width: 0; flex: 0 0 auto; }
+  #cs-inner #cs-stats-inner .cs-stat-bar-wrap { display: none; }
+  #cs-inner #cs-stats-inner .cs-stat-val { flex: 0 0 auto; }
+  /* Keep a usable parts viewport while the camera drawer occupies its row.
+     The budget and summary return as soon as the drawer closes. */
+  #carsetup:has(#cs-cam-panel:not([hidden])) #cs-stats-inner,
+  #carsetup:has(#cs-cam-panel:not([hidden])) #cs-budget-wrap { display: none; }
+}
+
+/* Change Car / garage open: sheet is up while buildSetup fills tabs (aria-busy). */
+#carsetup[aria-busy="true"] #cs-inner { cursor: progress; opacity: 0.72; }
+#carsetup[aria-busy="true"] #cs-inner::before {
+  content: "Loading garage…";
+  display: block;
+  margin: 0 0 var(--gap);
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: var(--ls-2);
+  color: var(--dim);
+}
+
+/* The pit arrival owns the canvas until the car is parked. */
+#carsetup.cs-arriving #cs-inner,
+#carsetup.cs-arriving #cs-stack { visibility: hidden; pointer-events: none; }
+#cs-arrival {
+  position: absolute; inset: auto 0 max(var(--pad), env(safe-area-inset-bottom));
+  display: flex; align-items: center; justify-content: center; gap: var(--gap);
+  padding: var(--gap) var(--pad); background: var(--carbon);
+  color: var(--text); pointer-events: auto;
+}
+#cs-arrival[hidden] { display: none; }
+#cs-arrival-label { font-weight: 700; letter-spacing: .12em; font-size: var(--label); }
+#cs-arrival-skip { min-height: var(--tap); }
+
+#ga-enabled { width: var(--tap); height: var(--tap); accent-color: var(--red); }
+#ga-fov {
+  width: 6ch; min-height: var(--tap); text-align: center;
+  background: var(--carbon); color: var(--text); border: 1px solid var(--text);
+  font: inherit;
+}
+
+/* ---------- SETTINGS › APPEARANCE › GARAGE (js/ui/screen-looks.js) ----------
+   The garage-only knobs. DENSITY, BUTTON HEIGHT, CORNERS and HEADINGS are the
+   shared core and live in css/responsive.css's SCREEN LOOKS block. Each rule
+   leads with `:root[attr] #carsetup` so it outweighs the shipped rule it
+   replaces, mode rules included (the livery editor's thinned panel is two ids
+   and a pseudo-class; these are two ids and two). No attribute = shipped. */
+
+/* PANEL WIDTH — scales only the CAP. The 410px floor (what --pair-at needs to
+   keep the rail) and the car's 320 / 420 visual-px reserve are untouched, so a
+   wider panel can never take the car below what it already keeps: on a narrow
+   screen the reserve binds first and 150% simply changes nothing. */
+:root[data-look-garage-pw] #carsetup {
+  --cs-sheet-w: min(100%, clamp(410px, calc(100 * var(--vwz) - 320px / var(--ui-scale)), calc(420px * var(--look-garage-pw, 1))));
+}
+:root[data-look-garage-pw] #carsetup:has(.cs-liv-editor) {
+  --cs-sheet-w: min(100%, clamp(410px, calc(100 * var(--vwz) - 420px / var(--ui-scale)), calc(420px * var(--look-garage-pw, 1))));
+}
+
+/* PANEL SIDE: LEFT. The dock is `place-items` alone, so mirroring it is one
+   word. The camera stack hugs the sheet's inner edge, so it mirrors with the
+   same scaled-width expression the shipped `right:` uses (see #cs-stack for
+   why it multiplies by the effective scale). LANDSCAPE ONLY: portrait is a
+   full-width sheet with the stack spanning the car band, and that rule must
+   keep winning there. The 3D framing follows on its own — renderSetupPreview
+   reads which side of the canvas the panel's centre is on (setup-camera.js
+   panelCover), so the car moves into the free half. Nothing on the sheet is
+   edge-specific (the head's red rail is the brand's leading edge, not the
+   dock's), so there is nothing else to mirror. */
+:root[data-look-garage-side="left"] #carsetup { place-items: stretch start; }
+@media (orientation: landscape) {
+  :root[data-look-garage-side="left"] #carsetup #cs-stack {
+    right: auto;
+    left: calc(var(--safe-l) + var(--cs-sheet-w) * var(--sheet-eff-scale, var(--ui-scale)) + var(--gap));
+  }
+  :root[data-look-garage-side="left"] #carsetup #cs-cam-panel { left: auto; right: 0; }
+}
+@media (max-width: 700px) and (orientation: landscape) {
+  /* Both dock preferences use the same allocated row on a narrow viewport. */
+  :root[data-look-garage-side="left"] #carsetup #cs-stack {
+    left: auto; right: auto;
+  }
+  :root[data-look-garage-side="left"] #carsetup #cs-cam-panel { left: 0; right: auto; }
+}
+
+/* PANEL: SOLID / GLASS. Shipped is --carbon (opaque chrome — pit-bay type
+   must not ghost through GARAGE). SOLID restates that. GLASS thins --panel
+   the way the livery editor already does; reduced transparency and HIGH
+   CONTRAST keep the shipped plate, as they do for that editor. */
+:root[data-look-garage-glass="solid"] #carsetup #cs-inner { background: var(--carbon); }
+:root[data-look-garage-glass="glass"]:not([data-ui-contrast="high"]) #carsetup #cs-inner {
+  background: color-mix(in oklab, var(--panel) 70%, transparent);
+}
+:root[data-look-garage-glass="glass"] #carsetup #cs-inner > .sheet-head {
+  background-color: var(--carbon);
+  background-image: var(--grad-head);
+}
+:root[data-look-garage-glass="glass"] #carsetup #cs-inner > .sheet-foot {
+  background-color: var(--carbon);
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root[data-look-garage-glass="glass"]:not([data-ui-contrast="high"]) #carsetup #cs-inner { background: var(--panel); }
+}
+
+/* STAT BARS: HIDE. The block is an item in #cs-header's flex column, so its
+   gap goes with it; the head simply gets shorter and the list taller. */
+:root[data-look-garage-stats="hide"] #carsetup #cs-stats-inner { display: none; }
+
+} /* @layer components */
+
+/* Garage comparison: a stable, readable decision area beside the actual car. */
+@layer components {
+  .cs-inspection {
+    display: grid;
+    gap: calc(var(--gap) * 0.5);
+    padding: var(--gap);
+    margin-bottom: var(--gap);
+    box-shadow: var(--edge);
+    border-inline-start: calc(var(--gap) * 0.25) solid var(--red);
+    border-radius: var(--r-md);
+    background: var(--carbon);
+    color: var(--text);
+  }
+  .cs-inspection p { margin: 0; color: var(--dim); font-size: var(--fs-2); line-height: 1.4; }
+  .cs-inspection > button { justify-self: start; }
+  #cs-options .cs-opt:focus-visible { outline-color: var(--red); outline-offset: calc(var(--gap) * 0.25); }
+}
+
+@layer components {
+/* The setup sheet's sliders (setup-experiments.ts, livery-design-editor.ts) use the
+   tuner's .tune-row markup: ported from f1-game css/tuner.css:469-493 and :613-615.
+   (.tune-label's base typography is also in src/styles/components.css.) */
+.tune-row { display: block; margin: 0; }
+/* Name on the left, value on the right — and the VALUE IS THE PART THAT MUST
+   NOT BE LOST. `space-between` alone puts the name and the number on one line
+   and offers no answer when they do not both fit: the name is an anonymous flex
+   item floored at its min-content width, so it refuses to give way and the
+   number is pushed straight out of the panel. MEASURED, lighting tuner on a
+   landscape iPhone at UI SIZE 150%: MOON BRIGHTNESS's "1.00" sat 15px past
+   #lt-rows, whose overflow-x is hidden, so the slider showed a name, a track and
+   no reading. The camera tuner's DISTANCE lost "0.00m" the same way.
+   Wrapping is the whole fix: when they fit it is the row it always was, and
+   when they do not the number takes its own line — still right-aligned, by the
+   auto margin rather than by `space-between`, which does nothing once the items
+   are on separate lines. */
+.tune-label {
+  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline;
+  /* --fs-micro (14px): at UI SIZE 90% painted type stays ≥12px. Was 12px/13px
+     on the label/value; chrome-devtools measured 10.8 / 11.7 visual. */
+  font-size: var(--fs-micro); letter-spacing: var(--ls-2); opacity: 0.9; margin-bottom: calc(var(--gap) / 6);
+}
+.tune-label b { color: var(--red); font-size: var(--fs-micro); flex: none; margin-left: auto; }
+.tune-row input[type="range"] {
+  /* --slider, not --tap-min: painted 32px hit at every UI SIZE. Native
+     accent-color chrome (not a custom thumb). See css/tokens.css. */
+  width: 100%; margin: 0; accent-color: var(--red); height: var(--slider); cursor: pointer;
+}
+.tune-row.tune-off { opacity: 0.75; }
+.tune-row.tune-off .tune-label { color: var(--dim); }
+.tune-row.tune-off .tune-label b { color: var(--dim); }
+
+/* The garage's TEAM & DRIVER controls reuse the select screen's identity
+   vocabulary (carsetup.css says so at its "identity controls" note): .team-card,
+   .tm-*, .chip-row and h3.sel-label, ported from f1-game css/select.css:735-744,
+   :751-761, :774, :813 and :860-863 so the garage is styled when it mounts
+   without the select screen. */
+.team-card, .team-tile {
+  display: flex; align-items: center; gap: var(--gap);
+  width: 100%; text-align: left; cursor: pointer;
+  padding: calc(var(--gap) * 0.7) var(--gap);
+  border-radius: var(--r-md);
+  /* both are <button>s: plate fill + line come from the base; the card then
+     tints both red below, and hover/press fills are the base's too */
+  transition: background 0.12s, border-color 0.12s, box-shadow 0.12s;
+}
+.team-card { border-color: color-mix(in srgb, var(--red) 55%, transparent); background: color-mix(in srgb, var(--red) 10%, transparent); }
+.tm-colour { flex: none; width: 32px; height: 32px; border-radius: var(--r-sm); border: 1px solid rgba(255,255,255,0.28); overflow: hidden; }
+.tm-colour canvas { display: block; width: 100%; height: 100%; }
+.tm-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1 1 auto; }
+.tm-name {
+  font-size: var(--fs-micro); font-weight: 800; font-style: italic; letter-spacing: var(--ls-1);
+  color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tm-sub {
+  font-size: var(--fs-micro); letter-spacing: var(--ls-2); color: var(--dim);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tm-chev { flex: none; color: var(--red); font-size: var(--fs-micro); }
+.chip-row { display: flex; flex-wrap: wrap; gap: calc(var(--gap) * 0.7); }
+h3.sel-label {
+  font-size: var(--label); font-weight: 700; font-style: italic;
+  letter-spacing: var(--ls-4); color: var(--steel); text-transform: uppercase;
+}
+}

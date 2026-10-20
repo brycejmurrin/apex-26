@@ -263,8 +263,8 @@ export interface GarageCareer {
 
 /**
  * The slice of GarageExperience (f1-game js/garage/experience.js:103-180) the
- * scene calls. TODO(lane-data): port js/garage/experience.ts and pass it; the
- * default (NO_EXPERIENCE) is experience.js with no career achievements.
+ * scene calls; ../experience.ts implements it (createGarageExperience), and
+ * createGarageScene builds one over its `career` dep by default.
  */
 export interface GarageExperienceApi {
   careerKey(ctx: GarageCtx | null | undefined): string;
