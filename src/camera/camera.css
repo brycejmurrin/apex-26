@@ -1,0 +1,212 @@
+@layer components {
+/* Camera screens: the CAMERA TUNER dock (src/camera/tuner-panel.ts) and the
+   COCKPIT preview (src/camera/cockpit-preview.ts).
+
+   Ported from f1-game css/tuner.css (the shared tuner vocabulary and the
+   camera-tuner rules: :30-72, :169-252, :257-290, :306-352, :440-493) and
+   css/cockpit-preview.css:1-12, verbatim except:
+   - selector lists that named the other docked panels keep the camera
+     lane's ids (#camtune, #flyby, #freecam); #lighting and #garrival's lanes
+     bring their own copy until the shared vocabulary moves to src/styles/.
+     The flyby editor / free camera specifics are in ./photo.css.
+     TODO(lane-data): move .adv-*, .tune-*, .lt-tabs, .lt-preview-* to
+     src/styles/components.css when a second tuner lands.
+   - `body:has(> #camtune…)` is `body:has(#camtune…)`: mountCamTuner(el) puts
+     the panel in the caller's element, not necessarily directly in <body>.
+   The tokens (--gap, --vwz, --tap-min, --plate-on, …) come from src/styles. */
+
+/* ---------- camera tuner dock (tuner.css:18-72) ----------
+   HOW WIDE THE DOCK IS, published once. It is 0 when no panel is docked, so
+   the free-cam layout falls back to the full-width arrangement with no extra rule. */
+:root { --dock-w: 0px; --dock-px: 0px; }
+body:has(#camtune:not([hidden])),
+body:has(#flyby:not([hidden])),
+body:has(#freecam:not([hidden])) {
+  /* `88 * --vwz`, NOT `88vw`: this value is in the panel's own ZOOMED local
+     space, and a bare viewport unit resolves against the UNZOOMED viewport and
+     is then multiplied by the zoom. */
+  --dock-w: min(
+    calc(88 * var(--vwz)),
+    380px,
+    calc(100 * var(--vwz) - (var(--sal) + var(--sar) + 16px) / var(--ui-scale))
+  );
+  /* WHAT THE PANEL PAINTS, WHICH IS NOT WHAT IT DECLARES — use this, not
+     --dock-w, to position anything against the dock. */
+  --dock-px: calc((var(--dock-w) + 8px + var(--sar)) * var(--ui-scale));
+}
+#camtune-inner, #flyby-inner, #freecam-inner { --fit-at: 200px; }
+
+/* Docked to the RIGHT edge with no backdrop: the game keeps rendering while the
+   panel is open, so the left of the screen is the live preview. */
+#camtune, #flyby, #freecam { position: fixed; top: 0; right: 0; bottom: 0; z-index: 42; pointer-events: none; }
+#camtune-inner, #flyby-inner, #freecam-inner {
+  /* Docked, not centred: .sheet gives the head/body/foot shape and the query
+     container, and these override the sheet's centred sizing. */
+  pointer-events: auto;
+  position: fixed;
+  /* DIVIDE THE INSETS BY THE ZOOM. This panel is a .sheet, so these
+     top/right/bottom resolve INSIDE `zoom: var(--sheet-scale, --ui-scale)`
+     and a raw inset term is multiplied by it. */
+  left: auto;
+  top: calc((var(--sat) + 8px) / var(--sheet-eff-scale, var(--ui-scale)));
+  right: calc((var(--sar) + 8px) / var(--sheet-eff-scale, var(--ui-scale)));
+  bottom: calc((var(--sab) + 8px) / var(--sheet-eff-scale, var(--ui-scale)));
+  transform: none;
+  width: var(--dock-w);
+  max-height: none;
+  z-index: 42;
+  background: rgba(12, 14, 20, 0.86);
+  /* Inline pad is ONE number with .lt-tabs' bleed below: the strip's
+     negative margin and re-padding must cancel this exactly. */
+  padding: calc(var(--gap) * 7 / 6) calc(var(--gap) * 1.5);
+  /* Fixed head (title / mode chips) + scrolling #ct-rows + fixed
+     RESET/COPY/DONE footer. */
+  display: flex; flex-direction: column;
+  /* overflow-y is the LAST-RESORT scroller: normally #ct-rows absorbs everything
+     and this never engages, but if the head + footer alone outgrow the panel
+     the whole panel scrolls rather than clipping its own footer off the bottom. */
+  overflow-x: hidden; overflow-y: auto; overscroll-behavior-y: contain;
+}
+/* The rail is a grouping element for ONE layout (the wide-and-short block).
+   Everywhere else it must not exist as a box at all. */
+#ct-rail, #fb-rail { display: contents; }
+
+/* min-height must be a real floor, not 0: #ct-rows is the ONLY item that can
+   give. padding-right buys the scroll indicator its own lane. */
+#ct-rows, #fb-rows, #fc-rows {
+  flex: 1 1 auto; overflow-y: auto; overscroll-behavior-y: contain;
+  min-height: max(84px, calc(44px / var(--ui-scale)));
+  touch-action: pan-y;
+  padding-right: 10px;
+}
+#ct-rows.sf-scroll::before, #fb-rows.sf-scroll::before { margin-right: -8px; }
+/* The COPY FROM dropdown: same tap floor the sheets use. */
+:is(#ct-rows, #fb-rows, #fc-rows, #ct-copyrow) select { min-height: var(--tap-min); }
+#ct-json, #fb-json { flex-shrink: 0; }
+#camtune-inner .adv-item, #flyby-inner .adv-item { margin: 7px 0; }
+#camtune-inner .adv-help { display: none; }        /* hidden unless "Show explanations" is on… */
+#camtune-inner.lt-show-help .adv-help { display: block; }   /* …then every row explains itself */
+/* The whole label is the switch, so the LABEL is the tap target: min-height
+   buys WCAG 2.5.8 (24x24) without moving anything. */
+.lt-help-toggle {
+  display: flex; align-items: center; gap: 7px; margin: calc(var(--gap) * 2 / 3) 0 calc(var(--gap) / 3);
+  min-height: var(--tap-min);
+  font-size: var(--fs-micro); opacity: 0.8; cursor: pointer;
+}
+.lt-help-toggle input { width: auto; accent-color: var(--red); margin: 0; }
+/* A balanced row derives its column count from this panel's local width. */
+.lt-tabs {
+  display: flex; flex-wrap: wrap;
+  --balance-basis: 8rem; --balance-min: 7rem;
+  gap: calc(var(--gap) / 3);
+  margin: calc(var(--gap) / 6) calc(var(--gap) * -1.5) calc(var(--gap) * 0.5);
+  padding: calc(var(--gap) * 0.5) calc(var(--gap) * 1.5) calc(var(--gap) * 2 / 3);
+  background: rgba(12, 14, 20, 0.94);
+  border-bottom: 1px solid var(--card-line);
+  flex-shrink: 0;
+}
+#ct-modes .lt-tab, #fb-shots .lt-tab {
+  /* --tap-paint on touch (52 painted px); desktop keeps --tap-min via tokens. */
+  min-height: var(--tap-paint);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: auto; margin: 0; min-width: 0;
+  padding: 5px 9px; font-size: var(--fs-micro); letter-spacing: var(--ls-2);
+  /* plate fill + line come from the button base; the pill radius is ours */
+  border-radius: var(--r-pill);
+  color: var(--text);
+  transition: background 0.12s, color 0.12s;
+  /* wraps rather than truncates: at rail width a column is ~100px and the
+     longest label needs two lines. */
+  white-space: normal; text-align: center; line-height: 1.15;
+}
+@media (hover: hover) and (pointer: fine) {
+  #ct-modes .lt-tab:hover, #fb-shots .lt-tab:hover { color: var(--text); }
+}
+#ct-modes .lt-tab:active, #fb-shots .lt-tab:active { color: var(--text); }
+#ct-modes .lt-tab.active, #fb-shots .lt-tab.active {
+  background: var(--plate-on); border-color: var(--red); color: var(--text);
+}
+/* panel header: title on one line */
+#ct-head, #fb-head, #fc-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: calc(var(--gap) / 3); }
+#ct-head h2, #fb-head h2, #fc-head h2 { margin: 0; }
+/* one compact line each — small inline label + tight chips */
+.lt-preview-row { display: flex; flex-wrap: wrap; align-items: center; gap: calc(var(--gap) / 3); margin: calc(var(--gap) * 0.25) 0; }
+.lt-preview-lbl { flex: 0 0 auto; width: 56px; font-size: var(--fs-micro); font-weight: 800; letter-spacing: var(--ls-4); color: var(--dim); }
+/* min-width max(42px, --tap-min), not the bare literal: 42 local px is only
+   42 PAINTED px at 100%. */
+.lt-preview-row .opt-btn { flex: 1 1 0; min-width: max(42px, var(--tap-min)); min-height: var(--tap-min); margin: 0; padding: calc(var(--gap) / 3) calc(var(--gap) * 0.25); font-size: var(--fs-micro); }
+.lt-preview-row .opt-btn.active,
+.lt-preview-row .opt-btn.on {
+  background: var(--plate-on); color: var(--text); border-color: var(--red);
+}
+/* No border-top here. The shared .sheet-foot draws its rule as a gradient
+   ::before (src/styles/components.css). */
+#camtune-inner .sheet-foot, #flyby-inner .sheet-foot, #freecam-inner .sheet-foot {
+  display: flex; gap: calc(var(--gap) * 2 / 3); flex-shrink: 0;
+  margin-top: 10px; padding-top: 10px;
+}
+#camtune-inner .sheet-foot button,
+#flyby-inner .sheet-foot button,
+#freecam-inner .sheet-foot button {
+  margin: 0;
+  min-height: var(--tap-min);
+}
+/* ---------- camera tuner (tuner.css:340-352) ---------- */
+#ct-profile {
+  font-size: var(--fs-micro); letter-spacing: var(--ls-3); font-weight: 700;
+  color: var(--red); margin: calc(var(--gap) / 6) 0 calc(var(--gap) / 3);
+}
+/* A mode whose framing has been changed keeps a red outline even when it is not
+   the selected chip — the panel shows one camera at a time, so this is the only
+   way to see at a glance which you have already tuned. */
+#ct-modes .lt-tab.tuned { border-color: var(--red); color: var(--text); }
+#ct-modes .lt-tab.tuned.active { border-color: var(--red); }
+#ct-json, #fb-json {
+  /* field-sizing lets the export box grow to whatever COPY VALUES produced
+     instead of scrolling inside a fixed 72px. Local `--svhz`, not `svh`: this
+     box lives inside `zoom: var(--ui-scale)`. */
+  field-sizing: content; max-height: min(calc(38 * var(--svhz)), 260px);
+  width: 100%; height: 72px; margin-top: 10px; resize: none;
+  font: 10px/1.5 ui-monospace, monospace; color: #cfe0ff;
+  background: rgba(0, 0, 0, 0.5); border: 1px solid var(--card-line);
+  border-radius: var(--r-sm); padding: calc(var(--gap) * 0.5);
+}
+/* ---------- the shared slider-row vocabulary (tuner.css:458-493) ---------- */
+.adv-sec {
+  color: var(--steel); font-size: var(--fs-micro); letter-spacing: var(--ls-4);
+  margin: calc(var(--gap) * 4 / 3) 0 calc(var(--gap) * 2 / 3); padding-bottom: calc(var(--gap) / 3);
+  border-bottom: 1px solid var(--card-line);
+}
+.adv-sec span {
+  color: color-mix(in oklab, var(--text) 45%, transparent); font-size: var(--fs-micro);
+  letter-spacing: var(--ls-1); margin-left: calc(var(--gap) * 0.5);
+}
+.adv-item { margin: 11px 0; }
+.adv-help { font-size: var(--fs-micro); opacity: 0.6; margin: calc(var(--gap) * 0.25) 0 0; line-height: 1.4; }
+.tune-row { display: block; margin: 0; }
+/* Name on the left, value on the right — and the VALUE IS THE PART THAT MUST
+   NOT BE LOST. Wrapping is the whole fix: when they fit it is one row, and
+   when they do not the number takes its own line, right-aligned by the auto
+   margin. */
+.tune-label {
+  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline;
+  font-size: var(--fs-micro); letter-spacing: var(--ls-2); opacity: 0.9; margin-bottom: calc(var(--gap) / 6);
+}
+.tune-label b { color: var(--red); font-size: var(--fs-micro); flex: none; margin-left: auto; }
+.tune-row input[type="range"] {
+  /* --slider, not --tap-min: painted 32px hit at every UI SIZE. */
+  width: 100%; margin: 0; accent-color: var(--red); height: var(--slider); cursor: pointer;
+}
+
+/* ---------- cockpit preview (css/cockpit-preview.css) ----------
+   Shares SETTINGS tokens, contrast and touch sizing in both themes. */
+#ckpreview { margin: var(--gap) 0; }
+#ckpreview button { min-height: var(--tap); padding: calc(var(--gap) * .66) var(--gap); border: 1px solid var(--dim); border-radius: var(--r-sm); background: var(--surf-1); color: var(--text); font: inherit; cursor: pointer; }
+#ckpreview button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+#ckpreview button[aria-pressed="true"] { border-color: var(--red); box-shadow: inset 0 -3px var(--red); }
+#ckpreview-frame { display: block; width: 100%; height: clamp(230px, 35vw, 340px); border: 1px solid var(--dim); border-radius: var(--r-md); margin-top: var(--gap); background: var(--carbon); }
+#ckpreview-angles { display: flex; flex-wrap: wrap; gap: calc(var(--gap) * .5); padding-top: calc(var(--gap) * .66); }
+#ckpreview-angles button { flex: 1 0 64px; font-size: var(--fs-micro); }
+@media (max-width: 600px) { #ckpreview-frame { height: 245px; } }
+@media (max-height: 500px) { #ckpreview-frame { height: 150px; } }
+}

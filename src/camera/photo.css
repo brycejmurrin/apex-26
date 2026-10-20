@@ -1,0 +1,266 @@
+@layer components {
+/* The FLYBY SHOT EDITOR (src/camera/flyby-editor.ts) and FREE CAMERA
+   (src/camera/free-cam.ts, photo-kit.ts) specifics. Their docked shell (the
+   panel, rail, rows, head, chips, foot, export box) shares camera.css's
+   selector lists, exactly as f1-game extends the same lists in css/tuner.css.
+
+   Ported verbatim from f1-game css/tuner.css:83-92 (the flying dock width),
+   :354-439 (flyby editor + free camera + photo-kit overlays), and
+   css/hud.css:1666-2012 (the photo-mode fly-cam overlay, @layer hud below),
+   keeping only what these files' DOM uses. Not ported: the compact-density
+   and rail layouts (tuner.css:689-830, :1431-1490 — they need the layout
+   engine's data-density / data-rail / editor-workspace attributes, which no
+   apex-26 code sets yet; TODO(lane-shell)), and the hud.css rules for
+   elements other lanes own (#hud, #lights, #campicker, #game-metrics, …).
+   `body:has(> …)` is `body:has(…)`: the mounts put their panel in the
+   caller's element, not necessarily directly in <body>. */
+
+/* ---------- the dock while flying (tuner.css:83-92) ---------- */
+body.photo-mode:not(.pc-nopanel):has(#camtune:not([hidden])),
+body.photo-mode:not(.pc-nopanel):has(#freecam:not([hidden])) {
+  /* `46 * --vwz`, not `46vw`: consumed inside `zoom: var(--ui-scale)`. */
+  --dock-w: min(calc(46 * var(--vwz)), 300px);
+}
+
+/* ---------- flyby shot editor (tuner.css:354-372) ----------
+   Same docked shell again (the selectors in camera.css are extended, not
+   duplicated); only the two things this panel has and the others do not live
+   here: the group headings that separate a shot's four poses, and the status line. */
+#fb-profile {
+  font-size: var(--fs-micro); letter-spacing: var(--ls-3); font-weight: 700;
+  color: var(--red); margin: calc(var(--gap) / 6) 0 calc(var(--gap) / 3);
+}
+/* The verdict line. It is the only place the panel can say "this eye is inside
+   a grandstand", which is the defect the sequencer exists to prevent, so it
+   turns red rather than sitting in the same grey as the shot count. */
+#fb-status {
+  font-size: var(--fs-micro); line-height: 1.35; color: var(--dim);
+  margin: 0 0 calc(var(--gap) / 3);
+  min-height: 2.7em;                 /* two lines reserved: no reflow per scrub frame */
+  overflow-wrap: anywhere;
+}
+#fb-status.fb-inside { color: var(--red); font-weight: 700; }
+#fb-scrub { margin: calc(var(--gap) / 3) 0; }
+
+/* ---------- free camera (tuner.css:373-387) ----------
+   The status line reads like the flyby editor's, and the button rows share one
+   rhythm. Everything is styled by id: the panel is built in JS and adds no
+   class of its own. */
+#fc-status {
+  font-size: var(--fs-micro); line-height: 1.35; color: var(--dim);
+  margin: 0 0 calc(var(--gap) / 3);
+  min-height: 2.7em;                 /* two lines reserved: no reflow as the camera flies */
+  overflow-wrap: anywhere;
+}
+#fc-snaps, #fc-lens, #fc-copies, #fc-kit { display: flex; flex-wrap: wrap; gap: calc(var(--gap) / 3); margin: calc(var(--gap) / 2) 0; }
+#fc-snaps > button, #fc-lens > button, #fc-copies > button, #fc-kit > button { flex: 1 1 0; margin: 0; min-height: var(--tap-min); }
+#fc-lens > button[aria-pressed="true"] { background: var(--plate-on); border-color: var(--red); color: var(--text); }
+#fc-help, #fc-msg { font-size: var(--fs-micro); color: var(--dim); margin: calc(var(--gap) / 3) 0; }
+#fc-out { flex-shrink: 0; width: 100%; min-height: 6em; }
+
+/* ---------- photo-kit viewport overlays (tuner.css:388-418) ----------
+   JS-built in free-cam / photo-kit. Id-only so the class list does not grow.
+   Hidden unless free camera is open. */
+#fc-comp-grid, #fc-dof {
+  position: fixed; inset: 0; z-index: 41; pointer-events: none;
+}
+#fc-comp-grid[data-grid="thirds"] {
+  background:
+    linear-gradient(to right, transparent calc(33.33% - 0.5px), color-mix(in oklab, var(--text) 35%, transparent) 0, color-mix(in oklab, var(--text) 35%, transparent) calc(33.33% + 0.5px), transparent 0) 0 0 / 100% 100%,
+    linear-gradient(to right, transparent calc(66.66% - 0.5px), color-mix(in oklab, var(--text) 35%, transparent) 0, color-mix(in oklab, var(--text) 35%, transparent) calc(66.66% + 0.5px), transparent 0) 0 0 / 100% 100%,
+    linear-gradient(to bottom, transparent calc(33.33% - 0.5px), color-mix(in oklab, var(--text) 35%, transparent) 0, color-mix(in oklab, var(--text) 35%, transparent) calc(33.33% + 0.5px), transparent 0) 0 0 / 100% 100%,
+    linear-gradient(to bottom, transparent calc(66.66% - 0.5px), color-mix(in oklab, var(--text) 35%, transparent) 0, color-mix(in oklab, var(--text) 35%, transparent) calc(66.66% + 0.5px), transparent 0) 0 0 / 100% 100%;
+}
+#fc-comp-grid[data-grid="golden"] {
+  background:
+    linear-gradient(to right, transparent calc(38.2% - 0.5px), color-mix(in oklab, var(--gold) 40%, transparent) 0, color-mix(in oklab, var(--gold) 40%, transparent) calc(38.2% + 0.5px), transparent 0) 0 0 / 100% 100%,
+    linear-gradient(to right, transparent calc(61.8% - 0.5px), color-mix(in oklab, var(--gold) 40%, transparent) 0, color-mix(in oklab, var(--gold) 40%, transparent) calc(61.8% + 0.5px), transparent 0) 0 0 / 100% 100%,
+    linear-gradient(to bottom, transparent calc(38.2% - 0.5px), color-mix(in oklab, var(--gold) 40%, transparent) 0, color-mix(in oklab, var(--gold) 40%, transparent) calc(38.2% + 0.5px), transparent 0) 0 0 / 100% 100%,
+    linear-gradient(to bottom, transparent calc(61.8% - 0.5px), color-mix(in oklab, var(--gold) 40%, transparent) 0, color-mix(in oklab, var(--gold) 40%, transparent) calc(61.8% + 0.5px), transparent 0) 0 0 / 100% 100%;
+}
+#fc-dof {
+  backdrop-filter: blur(var(--fc-dof-blur, 0px));
+  -webkit-backdrop-filter: blur(var(--fc-dof-blur, 0px));
+  -webkit-mask-image: radial-gradient(circle at 50% 45%,
+    transparent 0, transparent var(--fc-dof-clear, 40%),
+    black var(--fc-dof-soft, 70%), black 100%);
+  mask-image: radial-gradient(circle at 50% 45%,
+    transparent 0, transparent var(--fc-dof-clear, 40%),
+    black var(--fc-dof-soft, 70%), black 100%);
+}
+
+/* EYE FROM / EYE TO / LOOK FROM / LOOK TO (tuner.css:419-439). Four poses of
+   nine sliders read as one undifferentiated column without them. */
+#fb-rows .fb-group {
+  font-size: var(--fs-micro); letter-spacing: var(--ls-3); font-weight: 700;
+  color: var(--red); margin: var(--gap) 0 calc(var(--gap) / 3);
+  padding-top: calc(var(--gap) / 3); border-top: 1px solid var(--card-line);
+}
+#fb-rows .fb-group:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+/* EIGHT chips share the rail, so each is ~42px and "landmark1" is one
+   unbreakable 54px word: wrap it anywhere rather than overflow its pill. */
+#fb-shots .lt-tab { overflow-wrap: anywhere; }
+/* SIX OPS, ONE ROW. As a wrapping flex row these took THREE rows (138 px) in a
+   docked panel whose height is the viewport's. A six-column grid is ~46 px
+   whatever the width, and each button's full meaning is in its title. */
+#fb-ops { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: calc(var(--gap) / 3); }
+#fb-ops button { min-height: var(--tap-min); padding-inline: calc(var(--gap) / 6); white-space: nowrap; }
+}
+
+@layer hud {
+/* ---------- photo mode (free-fly camera) (hud.css:1666-2012) ---------- */
+/* Full-screen click-through overlay; only the sticks/buttons take pointer input
+   so a drag on the empty scene rotates the look (src/camera/photo-cam.ts). */
+#photo-controls {
+  position: fixed; inset: 0; z-index: 44;   /* above the docked tuner panel (42) so sticks stay tappable */
+  pointer-events: none;
+  touch-action: none;
+  font-family: inherit;
+}
+/* ...but NOT above a modal: nothing here is usable while a dialog is open
+   anyway — you cannot fly a paused game — so the overlay stands down. */
+body:has(.screen.dim:not([hidden])) #photo-controls { display: none; }
+#photo-controls > * { pointer-events: auto; }
+/* UI SIZE APPLIES TO THE FLY-CAM CONTROLS TOO. The zoom goes on the CLUSTERS,
+   never on #photo-controls (position: fixed; inset: 0 — zooming it would scale
+   the inset and shrink the layer). Each cluster divides its safe-area terms by
+   the scale: a safe-area inset encodes HARDWARE and must not grow with a type
+   setting. */
+.pc-stickwrap {
+  position: fixed; bottom: calc(20px + var(--sab) / var(--ui-scale));
+  zoom: var(--ui-scale);
+  display: flex; flex-direction: column; align-items: center; gap: calc(var(--gap) * 0.5);
+}
+.pc-move-wrap { left: calc(20px + var(--sal) / var(--ui-scale)); }
+.pc-look-wrap { left: calc(168px + var(--sal) / var(--ui-scale)); }
+/* ---------- clear of the docked panel ----------
+   MOVE stays under the left thumb; LOOK and the up/down column are anchored to
+   the RIGHT of the free strip, against the panel's edge whatever width it is.
+   --dock-px (camera.css) is a SCREEN measurement, divided back into these
+   zoomed controls' own space. */
+body.lt-open:not(.pc-nopanel) .pc-move-wrap { left: calc(10px + var(--sal) / var(--ui-scale)); }
+body.lt-open:not(.pc-nopanel) .pc-altcol {
+  left: auto; right: calc(var(--dock-px) / var(--ui-scale) + 14px);
+}
+body.lt-open:not(.pc-nopanel) .pc-look-wrap {
+  /* 14px air + the climb/dive column (`--steer`) + 8px gap before LOOK. */
+  left: auto; right: calc(var(--dock-px) / var(--ui-scale) + 14px + var(--steer, 84px) + 8px);
+}
+/* PORTRAIT: ONE COLUMN. With the tuner docked, an upright phone's free strip
+   is ~200px, so the controls stack up the left edge instead. */
+@media (orientation: portrait) {
+  body.lt-open:not(.pc-nopanel) .pc-look-wrap {
+    left: calc(10px + var(--sal) / var(--ui-scale)); right: auto;
+    bottom: calc(20px + var(--sab) / var(--ui-scale) + 150px);
+  }
+  body.lt-open:not(.pc-nopanel) .pc-altcol {
+    left: calc(10px + var(--sal) / var(--ui-scale)); right: auto;
+    bottom: calc(20px + var(--sab) / var(--ui-scale) + 300px);
+    flex-direction: row;
+  }
+  body.lt-open:not(.pc-nopanel) .pc-altcol .pc-btn { width: 56px; height: 56px; }
+}
+.pc-lbl { font-size: var(--fs-micro); font-weight: 800; letter-spacing: 0.14em; color: rgba(255,255,255,0.72); text-shadow: 0 1px 3px #000; }
+.pc-stick {
+  position: relative; width: 118px; height: 118px; border-radius: 50%;
+  background: rgba(18,18,26,0.42); border: 1px solid rgba(255,255,255,0.28);
+  box-shadow: inset 0 0 24px rgba(0,0,0,0.4);
+  touch-action: none; cursor: grab;
+}
+.pc-nub {
+  position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px;
+  border-radius: 50%; background: rgba(255, 255, 255, 0.22); border: 1px solid rgba(255,255,255,0.4);
+  will-change: transform;
+}
+.pc-altcol {
+  position: fixed; bottom: calc(20px + var(--sab) / var(--ui-scale)); left: calc(300px + var(--sal) / var(--ui-scale));
+  zoom: var(--ui-scale);
+  display: flex; flex-direction: column; gap: 10px;
+}
+.pc-btn {
+  /* Same diameter as the steering arrows (`--steer`: 84px, f1-game
+     css/touch-controls.css:39 — not yet a token here, hence the fallback). */
+  width: var(--steer, 84px); height: var(--steer, 84px); border-radius: var(--r-lg); margin: 0;
+  min-width: var(--tap-min); min-height: var(--tap-min);
+  font-size: 22px; font-weight: 800;
+  background: rgba(20,20,30,0.5); color: #fff; border: 1px solid rgba(255,255,255,0.25);
+  display: flex; align-items: center; justify-content: center;
+}
+.pc-btn:active { background: rgba(255,255,255,0.2); }
+#pc-bar {
+  position: fixed; top: calc(14px + var(--sat) / var(--ui-scale)); left: calc(20px + var(--sal) / var(--ui-scale));
+  zoom: var(--ui-scale);
+  display: flex; align-items: center; gap: calc(var(--gap) * 7 / 6); flex-wrap: wrap;
+  padding: calc(var(--gap) * 2 / 3) calc(var(--gap) * 7 / 6); border-radius: var(--r-lg);
+  background: rgba(10,10,16,0.55); border: 1px solid var(--card-line);
+  max-width: min(calc(70 * var(--vwz)), 720px);
+}
+/* The tuner panel stays docked right while free-cam flies, so keep the bar
+   clipped to the gap left of the panel. Only while the panel is showing. */
+body.lt-open:not(.pc-nopanel) #pc-bar {
+  max-width: max(160px, min(calc(70 * var(--vwz)), 720px,
+    calc(100 * var(--vwz) - var(--dock-w) - 8px - var(--sar) - 40px - var(--sal) / var(--ui-scale))));
+  gap: calc(var(--gap) * 2 / 3); padding: calc(var(--gap) * 0.5) 10px;
+}
+body.lt-open:not(.pc-nopanel) .pc-hint { display: none; }
+body.lt-open:not(.pc-nopanel) .pc-fovlab { font-size: var(--fs-micro); }
+body.lt-open:not(.pc-nopanel) .pc-fovlab input[type="range"] { width: 70px; }
+body.lt-open:not(.pc-nopanel) #pc-exit,
+body.lt-open:not(.pc-nopanel) #pc-panel,
+body.lt-open:not(.pc-nopanel) #pc-hud {
+  padding: 5px 10px; font-size: var(--fs-micro);
+}
+.pc-hint { font-size: var(--fs-micro); color: rgba(255,255,255,0.66); letter-spacing: 0.02em; }
+.pc-fovlab { display: flex; align-items: center; font-size: var(--fs-micro); font-weight: 700; color: var(--dim); }
+.pc-fovlab input[type="range"] { width: 110px; margin-left: calc(var(--gap) * 0.5); height: var(--slider); min-height: var(--slider); }
+#pc-exit, #pc-panel, #pc-hud {
+  width: auto; margin: 0; padding: 7px 16px; border-radius: var(--r-md);
+  font-size: var(--fs-micro); font-weight: 800; letter-spacing: 0.06em;
+  min-height: var(--tap-min);
+}
+@media (pointer: coarse) {
+  body.lt-open:not(.pc-nopanel) :is(#pc-exit, #pc-panel, #pc-hud),
+  .pc-fovlab input[type="range"] { min-height: var(--tap-paint); }
+  .pc-fovlab input[type="range"] { height: var(--tap-paint); }
+}
+#pc-exit { background: var(--red); color: #fff; border: 1px solid var(--red); }
+#pc-panel, #pc-hud { background: var(--plate-hover); color: var(--text); border: 1px solid var(--plate-line); }
+/* the FREE CAMERA launch buttons in the lighting tuner and the flyby editor */
+#pc-toggle, #fb-freecam {
+  width: auto; margin: 0; padding: calc(var(--gap) * 0.75) calc(var(--gap) * 7 / 6); border-radius: var(--r-md);
+  font-size: var(--fs-micro); font-weight: 800; letter-spacing: 0.04em;
+  background: rgba(0,140,200,0.2); color: #6cf; border: 1px solid rgba(0,160,220,0.45);
+  min-height: var(--tap-min);
+}
+/* Tuner panel tucked away (body.pc-nopanel) → the right half of the screen is
+   free, so switch to a classic dual-stick layout. */
+body.pc-nopanel .pc-look-wrap { left: auto; right: calc(20px + var(--sar) / var(--ui-scale)); }
+body.pc-nopanel .pc-altcol   { left: auto; right: calc(152px + var(--sar) / var(--ui-scale)); }
+/* Photo-mode HIDE HUD (body.pc-uihidden): clean unobstructed frame — every
+   photo control and the docked panel disappear; only the restore eye stays. */
+body.pc-uihidden #photo-controls > :not(#pc-restore) { display: none !important; }
+body.pc-uihidden #freecam-inner { display: none !important; }
+body.pc-uihidden #fc-comp-grid,
+body.pc-uihidden #fc-dof { display: none !important; }
+#pc-restore {
+  position: fixed;
+  zoom: var(--ui-scale);
+  top: calc(8px + var(--sat) / var(--ui-scale));
+  right: calc(10px + var(--sar) / var(--ui-scale));
+  width: max(36px, var(--tap-min)); height: max(36px, var(--tap-min));
+  padding: 0; margin: 0;
+  border-radius: var(--r-md);
+  font-size: 16px; line-height: 1;
+  opacity: 0.5;
+  display: none;            /* only visible while the photo UI is hidden */
+}
+@media (hover: hover) and (pointer: fine) { #pc-restore:hover { opacity: 0.95; } }
+#pc-restore:active { opacity: 0.95; }
+body.pc-uihidden #pc-restore { display: block; }
+/* The one control between a touch-only user and a screen with nothing on it. */
+@media (not (any-pointer: fine)) {
+  #pc-restore { width: max(46px, var(--tap-min)); height: max(46px, var(--tap-min)); font-size: 20px; }
+}
+/* Hide the keyboard-shortcut hint where there is no keyboard at all. */
+@media (not (any-pointer: fine)), (max-width: 720px) { .pc-hint { display: none; } }
+}
