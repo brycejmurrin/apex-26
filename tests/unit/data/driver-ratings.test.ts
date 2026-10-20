@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import * as DR from "../../../src/data/driver-ratings";
 import { LIST } from "../../../src/data/teams";
 import { f1Global, hasF1 } from "./f1-vm";
+import { parity } from "./parity";
 
 describe("driver ratings (spot values from f1-game js/data/driver-ratings.js)", () => {
   it("reads authored rows", () => {
@@ -109,3 +110,53 @@ describe.skipIf(!hasF1)("driver ratings vs f1-game in a VM", () => {
     expect(Object.is(DR.buildPace(a, b), ref.buildPace(a, b))).toBe(true);
   });
 });
+
+// CI has no f1-game: the VM comparisons above on a representative sample,
+// against committed reference outputs (tests/fixtures/data/parity/driver-ratings.json).
+type DRApi = Pick<RefDR, "get" | "fromTier" | "overall" | "skill" | "style01" | "buildPace" | "hash32">;
+type DRTables = Pick<RefDR, "AXES" | "STYLE_AXES" | "STYLE_SCALE" | "SKILL_BASE" | "SKILL_SPAN" | "SKILL_JITTER" | "BASE" | "HIRES">;
+function drRecord(api: DRApi, tables: DRTables): Record<string, unknown> {
+  const known = [...Object.keys(DR.BASE), ...Object.keys(DR.HIRES)];
+  const unknown = ["", "XYZ", "YOU", "ABC", "constructor", "__proto__", "toString", "ÜBR", "Q", "LONGCODE", "a26"];
+  for (let i = 0; i < 200; i += 20) unknown.push(String.fromCharCode(65 + (i % 26), 65 + ((i * 7) % 26), 65 + ((i * 13) % 26)) + i);
+  const tiers = [undefined, null, 0, 1, 2, 3, 4, 5, -1, 2.7, NaN];
+  // Entry lists: bare codes such as "constructor" and "__proto__" must not become object keys
+  // ("__proto__" assigns the prototype; an own "constructor" trips toStrictEqual's type check).
+  const get: [string, unknown][] = [], overall: [string, number][] = [], fromTier: [string, unknown][] = [], hash: [string, number][] = [];
+  for (const code of [...known, ...unknown]) {
+    for (const tier of tiers) {
+      const k = `${code}|${String(tier)}`, r = api.get(code, tier);
+      get.push([k, { ...r }]); overall.push([k, api.overall(r)]);
+      // fromTier never reads the authored rows: a few known codes are enough.
+      if (!Object.hasOwn(DR.BASE, code) || known.indexOf(code) < 4) fromTier.push([k, { ...api.fromTier(tier, code) }]);
+    }
+    hash.push([code, api.hash32(code)]);
+  }
+  const sets = [
+    { pace: 3, craft: -2.5 }, { pace: "5", experience: Infinity, awareness: NaN },
+    { consistency: 200, aggression: 7, optimism: -99 }, { bogus: 4 }, {},
+  ];
+  const deltas: unknown[] = [];
+  for (const code of ["VER", "STR", "FER2", "XYZ"]) for (const d of sets) deltas.push({ ...api.get(code, 2, d) });
+  const skill = [...known, ...unknown.slice(0, 8)].map((code) => {
+    const r = api.get(code, 3);
+    return [code, [0, 0.1, 0.25, 0.5, 0.731, 0.9, 0.999999].map((roll) => api.skill(r, roll))];
+  });
+  const a = { mods: { speed: 1.04, accel: 0.97, cornering: 1.01 } };
+  const b = { mods: { speed: 1.02, accel: 1.0, braking: 0.99 } };
+  return {
+    tables: {
+      AXES: [...tables.AXES], STYLE_AXES: [...tables.STYLE_AXES],
+      scalars: [tables.STYLE_SCALE, tables.SKILL_BASE, tables.SKILL_SPAN, tables.SKILL_JITTER],
+      BASE: Object.fromEntries(Object.keys(tables.BASE).map((k) => [k, [...tables.BASE[k]!]])),
+      HIRES: Object.fromEntries(Object.keys(tables.HIRES).map((k) => [k, [...tables.HIRES[k]!]])),
+      baseOrder: Object.keys(tables.BASE), hiresOrder: Object.keys(tables.HIRES),
+    },
+    get: Object.fromEntries(get), overall: Object.fromEntries(overall), fromTier: Object.fromEntries(fromTier), hash, deltas, skill,
+    style01: [undefined, null, -45, -30, -7, 0, 12, 30, 31].map((v) => api.style01(v)),
+    buildPace: api.buildPace(a, b),
+  };
+}
+parity("driver-ratings",
+  () => drRecord(DR as unknown as DRApi, DR as unknown as DRTables),
+  () => { const ref = f1Global(["js/data/driver-ratings.js"], "DriverRatings") as RefDR; return drRecord(ref, ref); });

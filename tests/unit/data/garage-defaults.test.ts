@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { GarageDefaults } from "../../../src/data/garage-defaults";
 import { f1Global, hasF1, plain } from "./f1-vm";
+import { parity } from "./parity";
 
 describe("garage defaults (spot values from f1-game js/data/garage-defaults.js)", () => {
   it("answers listed keys", () => {
@@ -42,3 +43,17 @@ describe.skipIf(!hasF1)("garage defaults vs f1-game in a VM", () => {
     expect(plain(GarageDefaults.file())).toEqual(plain(ref.file()));
   });
 });
+
+// CI has no f1-game: the same comparison against committed reference outputs.
+function garageRecord(g: RefGarage): Record<string, unknown> {
+  return {
+    keys: plain(g.keys()),
+    get: Object.fromEntries(g.keys().map((k) => [k, plain(g.get(k))])),
+    has: Object.fromEntries([...g.keys(), "nope", "parts.custom", "livery.", "constructor"].map((k) => [k, g.has(k)])),
+    meta: plain(g.meta()),
+    file: plain(g.file()),
+  };
+}
+parity("garage-defaults",
+  () => garageRecord(GarageDefaults as unknown as RefGarage),
+  () => garageRecord(f1Global(["js/data/garage-defaults.js"], "GarageDefaults") as RefGarage));

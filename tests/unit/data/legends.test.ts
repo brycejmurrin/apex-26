@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import * as L from "../../../src/data/legends";
 import { f1Global, hasF1, plain } from "./f1-vm";
+import { parity } from "./parity";
 
 describe("legends (spot values from f1-game js/data/legends.js)", () => {
   it("derives ratings from the record", () => {
@@ -75,3 +76,19 @@ describe.skipIf(!hasF1)("legends vs f1-game in a VM", () => {
     expect(plain(L.liveries())).toEqual(plain(ref.liveries()));
   });
 });
+
+// CI has no f1-game: the same comparisons against committed reference outputs.
+// team() is recorded raw (encode keeps the livery's explicit `name: undefined` key).
+function legendsRecord(api: RefLegends): Record<string, unknown> {
+  const keys = [...L.LIST.flatMap((l) => [l.id, l.code]), "nope", "", "constructor"];
+  // [key, outputs] pairs: an own "constructor" key would trip toStrictEqual's type check.
+  const per = keys.map((k) => [k, {
+    ratings: plain(api.ratings(k)), team: api.team(k), raceTeam: plain(api.raceTeam(k)), parts: plain(api.parts(k)),
+    seatOf: api.seatOf(k), byId: plain(api.byId(k)), byCode: plain(api.byCode(k)),
+  }]);
+  const derived = L.LIST.map((l) => { const r = api.ratingsFor(l.record); return { ratingsFor: plain(r), statsFor: plain(api.statsFor(r)) }; });
+  return { LIST: plain(api.LIST), PERIOD: plain(api.PERIOD), ERA_YEAR: plain(api.ERA_YEAR), per, derived, liveries: plain(api.liveries()) };
+}
+parity("legends",
+  () => legendsRecord(L as unknown as RefLegends),
+  () => legendsRecord(f1Global(["js/data/legends.js"], "Legends") as RefLegends));
